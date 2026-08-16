@@ -1,0 +1,404 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Sherpa.ViewModels"
+        xmlns:models="using:Sherpa.Models"
+        x:Class="Sherpa.Views.MainWindow"
+        x:DataType="vm:MainViewModel"
+        Title="Sherpa"
+        Width="1180" Height="740"
+        MinWidth="960" MinHeight="600"
+        Background="#0B0D12">
+
+  <Grid RowDefinitions="*,Auto">
+    <!-- Body -->
+    <Grid Grid.Row="0" ColumnDefinitions="240,*">
+
+      <!-- Sidebar -->
+      <Border Grid.Column="0" Classes="sidebar" BorderBrush="#1E2430" BorderThickness="0,0,1,0">
+        <DockPanel>
+          <StackPanel DockPanel.Dock="Top" Margin="16,18,16,8" Spacing="4">
+            <TextBlock Text="Sherpa" FontSize="20" FontWeight="Bold" />
+            <TextBlock Text="Sites · packages · deploys" Classes="muted" />
+          </StackPanel>
+
+          <StackPanel DockPanel.Dock="Bottom" Margin="12,8" Spacing="6">
+            <Button Content="New site" Command="{Binding OpenNewSiteWizardCommand}" HorizontalAlignment="Stretch" />
+            <Button Content="Import folder" Command="{Binding OpenImportSheetCommand}" HorizontalAlignment="Stretch" />
+          </StackPanel>
+
+          <DockPanel Margin="0,8,0,0">
+            <ListBox DockPanel.Dock="Top" Margin="4,0"
+                     SelectedIndex="{Binding SelectedNavIndex}">
+              <ListBoxItem Content="Sites" />
+              <ListBoxItem Content="Hosts" />
+              <ListBoxItem Content="Settings" />
+            </ListBox>
+
+            <ListBox Margin="8,12,8,8"
+                     ItemsSource="{Binding Sites}"
+                     SelectedItem="{Binding SelectedSite}"
+                     IsVisible="{Binding IsSitesNav}"
+                     Background="Transparent">
+              <ListBox.ItemTemplate>
+                <DataTemplate x:DataType="models:Site">
+                  <StackPanel Spacing="2" Margin="4,6">
+                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" />
+                    <TextBlock Text="{Binding Kind}" Classes="muted" FontSize="11" />
+                  </StackPanel>
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+          </DockPanel>
+        </DockPanel>
+      </Border>
+
+      <!-- Main -->
+      <Grid Grid.Column="1" RowDefinitions="Auto,*">
+        <!-- Top bar -->
+        <Border Grid.Row="0" Padding="20,14" BorderBrush="#1E2430" BorderThickness="0,0,0,1">
+          <Grid ColumnDefinitions="*,Auto">
+            <StackPanel>
+              <TextBlock Classes="h1"
+                         Text="{Binding SelectedSite.Name, FallbackValue='Sherpa'}" />
+              <TextBlock Classes="muted" Text="{Binding StatusLine}" TextWrapping="Wrap" />
+            </StackPanel>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+              <TextBlock Text="{Binding BusyLabel}" Classes="muted" VerticalAlignment="Center" IsVisible="{Binding IsBusy}" />
+              <Button Content="Copy errors" Command="{Binding CopyErrorsCommand}" IsEnabled="{Binding LogText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+            </StackPanel>
+          </Grid>
+        </Border>
+
+        <!-- Content by nav -->
+        <Panel Grid.Row="1">
+
+          <!-- SITES -->
+          <Grid IsVisible="{Binding IsSitesNav}"
+                ColumnDefinitions="*,340" Margin="16">
+
+            <!-- Empty state -->
+            <Border Classes="card" IsVisible="{Binding SelectedSite, Converter={x:Static ObjectConverters.IsNull}}"
+                    VerticalAlignment="Center" HorizontalAlignment="Center" MaxWidth="420">
+              <StackPanel Spacing="12">
+                <TextBlock Text="{Binding EmptyTitle}" Classes="h1" />
+                <TextBlock Text="{Binding EmptyBody}" Classes="muted" TextWrapping="Wrap" />
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                  <Button Content="Create your first site" Command="{Binding OpenNewSiteWizardCommand}" />
+                  <Button Content="Import folder" Command="{Binding OpenImportSheetCommand}" />
+                </StackPanel>
+              </StackPanel>
+            </Border>
+
+            <!-- Detail -->
+            <DockPanel IsVisible="{Binding SelectedSite, Converter={x:Static ObjectConverters.IsNotNull}}">
+              <TabControl SelectedIndex="{Binding SelectedDetailTab}">
+                <!-- Overview -->
+                <TabItem Header="Overview">
+                  <ScrollViewer Padding="4,12">
+                    <StackPanel Spacing="12" MaxWidth="720">
+                      <Border Classes="card">
+                        <StackPanel Spacing="8">
+                          <TextBlock Text="Path" FontWeight="SemiBold" />
+                          <TextBox Text="{Binding SelectedSite.Path}" IsReadOnly="True" />
+                          <TextBlock Text="Local URL" FontWeight="SemiBold" Margin="0,8,0,0" />
+                          <TextBox Text="{Binding SelectedSite.Url}" Watermark="http://site.test" />
+                          <TextBlock Classes="muted" Text="{Binding SelectedSite.Kind}" />
+                          <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
+                            <Button Content="Open folder" Command="{Binding OpenSiteFolderCommand}" />
+                            <Button Content="Remove from Sherpa" Command="{Binding RemoveSiteFromListCommand}" />
+                          </StackPanel>
+                          <TextBlock Classes="muted" TextWrapping="Wrap"
+                                     Text="Remove from Sherpa leaves files on disk. Delete folders yourself in Explorer when you mean it." />
+                        </StackPanel>
+                      </Border>
+
+                      <Border Classes="card">
+                        <StackPanel Spacing="8">
+                          <TextBlock Text="Quick actions" FontWeight="SemiBold" />
+                          <TextBlock Classes="muted" TextWrapping="Wrap"
+                                     Text="Clear Cache flushes Laravel caches. Clear Stache rebuilds Statamic's content index from files. Clear Glide Cache deletes generated image transforms so they regenerate on the next request." />
+                          <WrapPanel>
+                            <Button Margin="0,0,8,8" Content="Clear Cache" Command="{Binding ClearCacheCommand}" />
+                            <Button Margin="0,0,8,8" Content="Clear Stache" Command="{Binding ClearStacheCommand}" />
+                            <Button Margin="0,0,8,8" Content="Warm Stache" Command="{Binding WarmStacheCommand}" />
+                            <Button Margin="0,0,8,8" Content="Clear Glide Cache" Command="{Binding ClearGlideCommand}" />
+                            <Button Margin="0,0,8,8" Content="Composer install" Command="{Binding ComposerInstallCommand}" />
+                            <Button Margin="0,0,8,8" Content="Composer update" Command="{Binding ComposerUpdateCommand}" />
+                          </WrapPanel>
+                        </StackPanel>
+                      </Border>
+                    </StackPanel>
+                  </ScrollViewer>
+                </TabItem>
+
+                <!-- Git -->
+                <TabItem Header="Git">
+                  <ScrollViewer Padding="4,12">
+                    <StackPanel Spacing="12" MaxWidth="720">
+                      <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button Content="Refresh" Command="{Binding RefreshGitCommand}" />
+                        <Button Content="git init" Command="{Binding GitInitCommand}" />
+                        <Button Content="Back up to GitHub (private repo)" Command="{Binding BackupToGitHubCommand}" />
+                      </StackPanel>
+                      <TextBlock Classes="muted" TextWrapping="Wrap"
+                                 Text="Every change to your site can be tracked, so you can always roll back. Back up creates a private GitHub repo; token stays in the secret store." />
+                      <Border Classes="card">
+                        <StackPanel Spacing="6">
+                          <TextBlock Text="Status" FontWeight="SemiBold" />
+                          <TextBox Classes="log" Text="{Binding GitStatusText}" MinHeight="80" />
+                        </StackPanel>
+                      </Border>
+                      <Border Classes="card">
+                        <StackPanel Spacing="6">
+                          <TextBlock Text="Recent commits" FontWeight="SemiBold" />
+                          <TextBox Classes="log" Text="{Binding GitLogText}" MinHeight="160" />
+                        </StackPanel>
+                      </Border>
+                    </StackPanel>
+                  </ScrollViewer>
+                </TabItem>
+
+                <!-- Packages -->
+                <TabItem Header="Packages">
+                  <DockPanel Margin="4,12">
+                    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="0,0,0,12">
+                      <Button Content="Require package…" Command="{Binding OpenComposerSheetCommand}" />
+                      <Button Content="Composer update -W" Command="{Binding ComposerUpdateCommand}" />
+                      <Button Content="Refresh list" Command="{Binding RefreshGitCommand}" />
+                    </StackPanel>
+                    <ListBox ItemsSource="{Binding Packages}" Background="Transparent">
+                      <ListBox.ItemTemplate>
+                        <DataTemplate x:DataType="vm:PackageRow">
+                          <Border Classes="card" Margin="0,0,0,8">
+                            <StackPanel Spacing="2">
+                              <TextBlock FontWeight="SemiBold">
+                                <Run Text="{Binding Name}" />
+                                <Run Text="  " />
+                                <Run Text="{Binding Version}" Foreground="#9AA3B2" />
+                              </TextBlock>
+                              <TextBlock Text="{Binding Description}" Classes="muted" TextWrapping="Wrap" />
+                            </StackPanel>
+                          </Border>
+                        </DataTemplate>
+                      </ListBox.ItemTemplate>
+                    </ListBox>
+                  </DockPanel>
+                </TabItem>
+
+                <!-- Commands -->
+                <TabItem Header="Commands">
+                  <ScrollViewer Padding="4,12">
+                    <StackPanel Spacing="12" MaxWidth="720">
+                      <TextBlock Classes="muted" TextWrapping="Wrap"
+                                 Text="Runs real please / artisan commands in this site's folder. PHP comes from Herd, Laragon, or the path you set under Settings." />
+                      <WrapPanel>
+                        <Button Margin="0,0,8,8" Content="php artisan cache:clear" Command="{Binding ClearCacheCommand}" />
+                        <Button Margin="0,0,8,8" Content="php please stache:clear" Command="{Binding ClearStacheCommand}" />
+                        <Button Margin="0,0,8,8" Content="php please stache:warm" Command="{Binding WarmStacheCommand}" />
+                        <Button Margin="0,0,8,8" Content="php please glide:clear" Command="{Binding ClearGlideCommand}" />
+                      </WrapPanel>
+                    </StackPanel>
+                  </ScrollViewer>
+                </TabItem>
+
+                <!-- Deploy -->
+                <TabItem Header="Deploy">
+                  <ScrollViewer Padding="4,12">
+                    <StackPanel Spacing="12" MaxWidth="720">
+                      <Border Classes="card">
+                        <StackPanel Spacing="8">
+                          <TextBlock Text="Deploy" FontWeight="SemiBold" />
+                          <TextBlock Classes="muted" TextWrapping="Wrap"
+                                     Text="Connect GitHub and a host under Settings first. Sherpa checks prerequisites the same way the Mac app does — no silent 401s." />
+                          <Button Content="Check deploy prerequisites" Command="{Binding DeployPrerequisiteCheckCommand}" HorizontalAlignment="Left" />
+                          <Button Content="Back up to GitHub first" Command="{Binding BackupToGitHubCommand}" HorizontalAlignment="Left" />
+                        </StackPanel>
+                      </Border>
+                      <Border Classes="card">
+                        <StackPanel Spacing="6">
+                          <TextBlock Text="Deployment history" FontWeight="SemiBold" />
+                          <TextBlock Classes="muted" Text="No deployments yet." />
+                          <ItemsControl ItemsSource="{Binding Deployments}">
+                            <ItemsControl.ItemTemplate>
+                              <DataTemplate x:DataType="models:DeploymentRecord">
+                                <TextBlock Margin="0,4" Text="{Binding Summary}" />
+                              </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                          </ItemsControl>
+                        </StackPanel>
+                      </Border>
+                    </StackPanel>
+                  </ScrollViewer>
+                </TabItem>
+              </TabControl>
+            </DockPanel>
+
+            <!-- Right: log + advice -->
+            <DockPanel Grid.Column="1" Margin="12,0,0,0" IsVisible="{Binding SelectedSite, Converter={x:Static ObjectConverters.IsNotNull}}">
+              <TextBlock DockPanel.Dock="Top" Text="Activity" FontWeight="SemiBold" Margin="0,0,0,8" />
+              <ItemsControl DockPanel.Dock="Top" ItemsSource="{Binding Advice}" Margin="0,0,0,8">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="models:ConflictAdvice">
+                    <Border Classes="card" Margin="0,0,0,8" Background="#1A1520" BorderBrush="#5B3A4A">
+                      <StackPanel Spacing="4">
+                        <TextBlock Text="{Binding Title}" Classes="advice-title" />
+                        <TextBlock Text="{Binding Detail}" Classes="muted" TextWrapping="Wrap" />
+                      </StackPanel>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+              <TextBox Classes="log" Text="{Binding LogText}" AcceptsReturn="True" />
+            </DockPanel>
+          </Grid>
+
+          <!-- HOSTS -->
+          <ScrollViewer IsVisible="{Binding IsHostsNav}"
+                        Padding="24">
+            <StackPanel Spacing="16" MaxWidth="640">
+              <TextBlock Classes="h1" Text="Hosts" />
+              <TextBlock Classes="muted" TextWrapping="Wrap"
+                         Text="Credentials live in the Windows secret store (DPAPI), not in your project files. Same idea as Keychain on the Mac app." />
+
+              <Border Classes="card">
+                <StackPanel Spacing="8">
+                  <TextBlock Text="GitHub" FontWeight="SemiBold" />
+                  <TextBlock Classes="muted" TextWrapping="Wrap"
+                             Text="Create a classic token at GitHub → Settings → Developer settings. Repo scope is enough for private backups." />
+                  <TextBox Watermark="ghp_…" PasswordChar="•" Text="{Binding GitHubTokenInput}" />
+                  <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Button Content="Save token" Command="{Binding SaveGitHubTokenCommand}" />
+                    <Button Content="Remove" Command="{Binding ClearGitHubTokenCommand}" />
+                  </StackPanel>
+                  <TextBlock Text="{Binding GitHubStatus}" Classes="muted" TextWrapping="Wrap" />
+                </StackPanel>
+              </Border>
+
+              <Border Classes="card">
+                <StackPanel Spacing="8">
+                  <TextBlock Text="Cloudflare Pages" FontWeight="SemiBold" />
+                  <TextBlock Classes="muted" TextWrapping="Wrap"
+                             Text="Create a Custom Token (not Global API Key) with Pages edit. Account ID is in the dashboard URL or account overview." />
+                  <TextBox Watermark="API token" PasswordChar="•" Text="{Binding CfTokenInput}" />
+                  <TextBox Watermark="Account ID" Text="{Binding CfAccountId}" />
+                  <Button Content="Save Cloudflare" Command="{Binding SaveCloudflareCommand}" HorizontalAlignment="Left" />
+                  <TextBlock Text="{Binding CfStatus}" Classes="muted" TextWrapping="Wrap" />
+                </StackPanel>
+              </Border>
+
+              <Border Classes="card">
+                <StackPanel Spacing="6">
+                  <TextBlock Text="Forge · Laravel Cloud · Netlify" FontWeight="SemiBold" />
+                  <TextBlock Classes="muted" TextWrapping="Wrap"
+                             Text="Wired the same way next — separate host cards, named accounts, secrets out of the repo. This 0.1.0 build ships GitHub + Cloudflare first." />
+                </StackPanel>
+              </Border>
+            </StackPanel>
+          </ScrollViewer>
+
+          <!-- SETTINGS -->
+          <ScrollViewer IsVisible="{Binding IsSettingsNav}"
+                        Padding="24">
+            <StackPanel Spacing="16" MaxWidth="640">
+              <TextBlock Classes="h1" Text="Settings" />
+              <Border Classes="card">
+                <StackPanel Spacing="8">
+                  <TextBlock Text="Default sites folder" FontWeight="SemiBold" />
+                  <Grid ColumnDefinitions="*,Auto">
+                    <TextBox Text="{Binding DefaultSitesFolder}" />
+                    <Button Grid.Column="1" Margin="8,0,0,0" Content="Browse" Command="{Binding BrowseSitesFolderCommand}" />
+                  </Grid>
+                  <TextBlock Text="PHP path (optional)" FontWeight="SemiBold" Margin="0,8,0,0" />
+                  <TextBox Text="{Binding PreferredPhp}" Watermark="Leave blank to auto-detect Herd / Laragon / PATH" />
+                  <TextBlock Text="Composer path (optional)" FontWeight="SemiBold" Margin="0,8,0,0" />
+                  <TextBox Text="{Binding PreferredComposer}" />
+                  <TextBlock Text="Git path (optional)" FontWeight="SemiBold" Margin="0,8,0,0" />
+                  <TextBox Text="{Binding PreferredGit}" />
+                  <Button Content="Save settings" Command="{Binding SaveSettingsCommand}" HorizontalAlignment="Left" Margin="0,8,0,0" />
+                </StackPanel>
+              </Border>
+              <Border Classes="card">
+                <StackPanel Spacing="6">
+                  <TextBlock Text="Detected runtimes" FontWeight="SemiBold" />
+                  <TextBox Classes="log" Text="{Binding RuntimeStatus}" MinHeight="100" />
+                </StackPanel>
+              </Border>
+            </StackPanel>
+          </ScrollViewer>
+        </Panel>
+      </Grid>
+    </Grid>
+
+    <!-- Status bar -->
+    <Border Grid.Row="1" Background="#0F1218" BorderBrush="#1E2430" BorderThickness="0,1,0,0" Padding="12,8">
+      <TextBlock Classes="muted" Text="Sherpa for Windows · 0.1.0 (build 1) · Tokens stay in the Windows secret store" />
+    </Border>
+
+    <!-- Toast -->
+    <Border IsVisible="{Binding ShowToast}"
+            HorizontalAlignment="Right" VerticalAlignment="Bottom"
+            Margin="0,0,20,48" Classes="card" ZIndex="20" MaxWidth="320">
+      <StackPanel Spacing="6">
+        <TextBlock Text="{Binding ToastTitle}" FontWeight="SemiBold" />
+        <TextBlock Text="{Binding ToastBody}" Classes="muted" TextWrapping="Wrap" />
+        <Button Content="Dismiss" Command="{Binding DismissToastCommand}" HorizontalAlignment="Right" />
+      </StackPanel>
+    </Border>
+
+    <!-- New site wizard overlay -->
+    <Grid IsVisible="{Binding ShowNewSiteWizard}" Background="#99000000" ZIndex="30">
+      <Border Classes="card" Width="480" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="20">
+        <StackPanel Spacing="12">
+          <TextBlock Classes="h1" Text="New site" />
+          <TextBlock Classes="muted" TextWrapping="Wrap"
+                     Text="Start blank or pick a Statamic create-project. Blank is just a folder — useful when you're cloning existing work." />
+          <TextBox Watermark="folder-name" Text="{Binding NewSiteName}" />
+          <StackPanel Spacing="6">
+            <RadioButton Content="Blank site" GroupName="NewSite" IsChecked="{Binding NewSiteBlank}" />
+            <RadioButton Content="Statamic (composer create-project)" GroupName="NewSite" IsChecked="{Binding NewSiteStatamic}" />
+          </StackPanel>
+          <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+            <Button Content="Cancel" Command="{Binding CloseNewSiteWizardCommand}" />
+            <Button Content="Create" Command="{Binding CreateSiteCommand}" />
+          </StackPanel>
+        </StackPanel>
+      </Border>
+    </Grid>
+
+    <!-- Import sheet -->
+    <Grid IsVisible="{Binding ShowImportSheet}" Background="#99000000" ZIndex="30">
+      <Border Classes="card" Width="520" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="20">
+        <StackPanel Spacing="12">
+          <TextBlock Classes="h1" Text="Import folder" />
+          <TextBlock Classes="muted" TextWrapping="Wrap"
+                     Text="Point Sherpa at a folder that already has composer.json / artisan / please. We'll detect Statamic vs Laravel." />
+          <Grid ColumnDefinitions="*,Auto">
+            <TextBox Text="{Binding ImportPath}" Watermark="C:\Users\you\Sites\my-site" />
+            <Button Grid.Column="1" Margin="8,0,0,0" Content="Browse" Command="{Binding BrowseImportFolderCommand}" />
+          </Grid>
+          <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+            <Button Content="Cancel" Command="{Binding CloseImportSheetCommand}" />
+            <Button Content="Import" Command="{Binding ImportSiteCommand}" />
+          </StackPanel>
+        </StackPanel>
+      </Border>
+    </Grid>
+
+    <!-- Composer require sheet -->
+    <Grid IsVisible="{Binding ShowComposerSheet}" Background="#99000000" ZIndex="30">
+      <Border Classes="card" Width="480" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="20">
+        <StackPanel Spacing="12">
+          <TextBlock Classes="h1" Text="Composer require" />
+          <TextBlock Classes="muted" TextWrapping="Wrap"
+                     Text="Runs composer require in this site. Use vendor/package. Version is optional." />
+          <TextBox Watermark="statamic/seo-pro" Text="{Binding RequirePackage}" />
+          <TextBox Watermark="^1.0 (optional)" Text="{Binding RequireVersion}" />
+          <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+            <Button Content="Cancel" Command="{Binding CloseComposerSheetCommand}" />
+            <Button Content="Require" Command="{Binding ComposerRequireCommand}" />
+          </StackPanel>
+        </StackPanel>
+      </Border>
+    </Grid>
+  </Grid>
+</Window>
