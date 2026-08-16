@@ -26,6 +26,20 @@ public sealed class SiteCommandsService
     public async Task<ProcessResult> ClearGlideAsync(string sitePath, Action<string>? onLine, CancellationToken ct = default)
         => await PhpPlease(sitePath, new[] { "glide:clear" }, onLine, ct);
 
+    public async Task<ProcessResult> MakeUserAsync(
+        string sitePath,
+        string email,
+        string password,
+        bool super,
+        Action<string>? onLine,
+        CancellationToken ct = default)
+    {
+        // please make:user --email= --password=  (super via interactive historically; try flags)
+        var args = new List<string> { "make:user", $"--email={email}", $"--password={password}" };
+        if (super) args.Add("--super");
+        return await PhpPlease(sitePath, args, onLine, ct);
+    }
+
     public async Task<ProcessResult> PleaseAsync(string sitePath, IEnumerable<string> args, Action<string>? onLine, CancellationToken ct = default)
         => await PhpPlease(sitePath, args, onLine, ct);
 

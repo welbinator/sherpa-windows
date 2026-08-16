@@ -44,10 +44,23 @@ public sealed class RuntimeManager
 
     public string? FindNpm() => Which("npm") ?? Which("npm.cmd");
 
+    public string? FindHerd()
+    {
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        foreach (var c in new[]
+                 {
+                     Path.Combine(local, "Programs", "Herd", "bin", "herd.bat"),
+                     Path.Combine(home, ".config", "herd", "bin", "herd.bat"),
+                 })
+            if (File.Exists(c)) return c;
+        return Which("herd") ?? Which("herd.bat");
+    }
+
     public string StatusSummary()
     {
         string Mark(string? p) => p is null ? "not found" : p;
-        return $"PHP: {Mark(FindPhp())}\nComposer: {Mark(FindComposer())}\nGit: {Mark(FindGit())}\nnpm: {Mark(FindNpm())}";
+        return $"PHP: {Mark(FindPhp())}\nComposer: {Mark(FindComposer())}\nGit: {Mark(FindGit())}\nnpm: {Mark(FindNpm())}\nHerd: {Mark(FindHerd())}";
     }
 
     private static IEnumerable<string> CandidatePhp()

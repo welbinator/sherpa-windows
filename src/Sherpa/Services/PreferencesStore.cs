@@ -26,11 +26,17 @@ public sealed class PreferencesStore
     {
         if (!File.Exists(_path))
         {
+            var herdDir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                "Herd");
             var prefs = new AppPreferences
             {
-                DefaultSitesFolder = Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-                    "Sites"),
+                // Prefer Herd's Windows default folder when present
+                DefaultSitesFolder = Directory.Exists(herdDir)
+                    ? herdDir
+                    : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Sites"),
+                PreferHerdForNewSites = true,
+                SecureNewHerdSitesWithHttps = true,
             };
             return prefs;
         }
