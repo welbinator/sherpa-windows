@@ -13,24 +13,25 @@ public sealed class RuntimeManager
     {
         var prefs = _prefs.Load();
         if (!string.IsNullOrWhiteSpace(prefs.PreferredPhpPath) && File.Exists(prefs.PreferredPhpPath))
-            return prefs.PreferredPhpPath;
+            return PreferRunnableWindows(prefs.PreferredPhpPath);
 
         foreach (var c in CandidatePhp())
-            if (File.Exists(c)) return c;
+            if (File.Exists(c)) return PreferRunnableWindows(c);
 
-        return Which("php") ?? Which("php.exe");
+        return PreferRunnableWindows(Which("php.exe") ?? Which("php"));
     }
 
     public string? FindComposer()
     {
         var prefs = _prefs.Load();
         if (!string.IsNullOrWhiteSpace(prefs.PreferredComposerPath) && File.Exists(prefs.PreferredComposerPath))
-            return prefs.PreferredComposerPath;
+            return PreferRunnableWindows(prefs.PreferredComposerPath);
 
         foreach (var c in CandidateComposer())
-            if (File.Exists(c)) return c;
+            if (File.Exists(c)) return PreferRunnableWindows(c);
 
-        return Which("composer") ?? Which("composer.bat") ?? Which("composer.phar");
+        return PreferRunnableWindows(
+            Which("composer.bat") ?? Which("composer.cmd") ?? Which("composer") ?? Which("composer.phar"));
     }
 
     public string? FindGit()
@@ -110,13 +111,31 @@ public sealed class RuntimeManager
     {
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         var local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        yield return Path.Combine(home, "AppData", "Local", "Programs", "Herd", "resources", "app.asar.unpacked", "resources", "bin", "php.bat");
-        // Herd Windows often puts shims here:
+
+        // Prefer real php.exe over .bat shims (Process.Start + redirected IO hates batch files).
+        yield return Path.Combine(local, "Programs", "Herd", "bin", "php.exe");
+        yield return Path.Combine(local, "Programs", "Herd", "resources", "app.asar.unpacked", "resources", "bin", "php.exe");
+        yield return Path.Combine(home, "AppData", "Local", "Programs", "Herd", "resources", "app.asar.unpacked", "resources", "bin", "php.exe");
+        yield return Path.Combine(home, ".config", "herd", "bin", "php.exe");
+        yield return Path.Combine(local, "Herd", "bin", "php.exe");
+
+        // Herd versioned PHP homes
+        var herdPhpRoot = Path.Combine(home, ".config", "herd", "bin", "php");
+        if (Directory.Exists(herdPhpRoot))
+        {
+            foreach (var dir in Directory.EnumerateDirectories(herdPhpRoot).OrderByDescending(d => d))
+            {
+                var exe = Path.Combine(dir, "php.exe");
+                if (File.Exists(exe)) yield return exe;
+            }
+        }
+
+        // Fall back to bat shims (ProcessRunner unwraps when possible).
         yield return Path.Combine(home, ".config", "herd", "bin", "php.bat");
         yield return Path.Combine(local, "Herd", "bin", "php.bat");
-        yield return Path.Combine(local, "Programs", "Herd", "bin", "php.exe");
+        yield return Path.Combine(home, "AppData", "Local", "Programs", "Herd", "resources", "app.asar.unpacked", "resources", "bin", "php.bat");
+
         yield return @"C:\laragon\bin\php\php-8.3.0-Win32-vs16-x64\php.exe";
-        // Generic laragon glob-ish: scan one level
         var laragonPhp = @"C:\laragon\bin\php";
         if (Directory.Exists(laragonPhp))
         {
@@ -188,5 +207,22 @@ public sealed class RuntimeManager
         {
             return false;
         }
+    }
+
+    /// <summary>
+    /// If we were handed a .bat/.cmd, prefer a real PE resolved beside it or via ProcessRunner unwrap.
+    /// </summary>
+    private static string? PreferRunnableWindows(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return path;
+        if (!OperatingSystem.IsWindows()) return path;
+        if (!path.EndsWith(".bat", StringComparison.OrdinalIgnoreCase)
+            && !path.EndsWith(".cmd", StringComparison.OrdinalIgnoreCase))
+            return path;
+
+        if (ProcessRunner.TryResolveWindowsBatchTarget(path, Array.Empty<string>(), out var exe, out _))
+            return exe;
+
+        return path;
     }
 }

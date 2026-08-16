@@ -84,7 +84,7 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty] private string previewUrl = "";
     /// <summary>Bumped to force the WebView to reload even when the URL is unchanged.</summary>
     [ObservableProperty] private int previewReloadToken;
-    [ObservableProperty] private string statusLine = "Sherpa for Windows · 0.3.7";
+    [ObservableProperty] private string statusLine = "Sherpa for Windows · 0.3.8";
     [ObservableProperty] private string runtimeStatus = "";
     /// <summary>Monochrome Path.Data for the open-in-browser toolbar icon (Chrome / Firefox / Edge / generic).</summary>
     [ObservableProperty] private string browserIconPathData = DefaultBrowserDetector.IconPathData(DefaultBrowserKind.Generic);
