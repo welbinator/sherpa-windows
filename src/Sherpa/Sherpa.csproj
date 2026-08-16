@@ -9,16 +9,17 @@
     <ApplicationIcon>Assets/sherpa.ico</ApplicationIcon>
     <RootNamespace>Sherpa</RootNamespace>
     <AssemblyName>Sherpa</AssemblyName>
-    <Version>0.2.9</Version>
-    <AssemblyVersion>0.2.9.11</AssemblyVersion>
-    <FileVersion>0.2.9.11</FileVersion>
-    <InformationalVersion>0.2.9+build.11</InformationalVersion>
+    <Version>0.2.10</Version>
+    <AssemblyVersion>0.2.10.12</AssemblyVersion>
+    <FileVersion>0.2.10.12</FileVersion>
+    <InformationalVersion>0.2.10+build.12</InformationalVersion>
     <Product>Sherpa</Product>
     <Company>Sherpa</Company>
     <Authors>welbinator</Authors>
     <Description>Windows port of Sherpa — local Statamic/Laravel site manager (Jack-crafted DX).</Description>
-    <!-- Single-file hides/breaks WebView2Loader.dll → black empty preview. Ship a folder. -->
-    <PublishSingleFile>false</PublishSingleFile>
+    <!-- Single-file zip+.exe (user preference). Natives self-extract; Program.cs
+         makes WebView2Loader.dll discoverable so preview still works. -->
+    <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>true</SelfContained>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>

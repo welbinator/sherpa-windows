@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 # Create a GitHub Release for Sherpa Windows and upload the zip.
-# Usage: scripts/release.sh 0.2.9 "Optional release notes markdown"
+# Usage: scripts/release.sh 0.2.10 "Optional release notes markdown"
+# Ship shape: ONE self-contained Sherpa.exe inside Sherpa-win-x64.zip
 set -euo pipefail
 
 VERSION="${1:-}"
 NOTES="${2:-}"
 if [[ -z "$VERSION" ]]; then
   echo "Usage: $0 <version> [notes]" >&2
-  echo "  e.g. $0 0.2.9 'Bug fixes'" >&2
+  echo "  e.g. $0 0.2.10 'Bug fixes'" >&2
   exit 1
 fi
 VERSION="${VERSION#v}"
@@ -34,35 +35,28 @@ echo "==> Clean publish dir"
 rm -rf publish/win-x64
 mkdir -p publish/win-x64
 
-echo "==> Publish win-x64 (multi-file so WebView2Loader.dll ships beside exe)"
-dotnet publish src/Sherpa/Sherpa.csproj -c Release -r win-x64 --self-contained true -o publish/win-x64
+echo "==> Publish win-x64 single-file self-contained"
+dotnet publish src/Sherpa/Sherpa.csproj -c Release -r win-x64 --self-contained true -o publish/win-x64 \
+  -p:PublishSingleFile=true \
+  -p:IncludeNativeLibrariesForSelfExtract=true
 
-# Belt-and-suspenders: ensure WebView2Loader.dll is next to Sherpa.exe
-if [[ ! -f publish/win-x64/WebView2Loader.dll ]]; then
-  LOADER="$(find "${HOME}/.nuget/packages/webview.avalonia.windows" -path '*win-x64*WebView2Loader.dll' | head -n1 || true)"
-  if [[ -n "$LOADER" ]]; then
-    echo "==> Copying WebView2Loader.dll from $LOADER"
-    cp -f "$LOADER" publish/win-x64/WebView2Loader.dll
-  else
-    echo "WARN: WebView2Loader.dll missing from publish output" >&2
-  fi
+if [[ ! -f publish/win-x64/Sherpa.exe ]]; then
+  echo "ERROR: publish/win-x64/Sherpa.exe missing" >&2
+  exit 1
 fi
 
-echo "==> Zip entire publish folder (not just the exe)"
+echo "==> Zip ONLY Sherpa.exe (single application file)"
 mkdir -p artifacts
 rm -f artifacts/Sherpa-win-x64.zip
-(cd publish/win-x64 && zip -qr ../../artifacts/Sherpa-win-x64.zip .)
+(cd publish/win-x64 && zip -qr ../../artifacts/Sherpa-win-x64.zip Sherpa.exe)
 ZIP="$ROOT/artifacts/Sherpa-win-x64.zip"
 ls -lh "$ZIP"
-echo "Contents sample:"
-unzip -l "$ZIP" | head -40
+unzip -l "$ZIP"
 
 if [[ -z "$NOTES" ]]; then
   NOTES="Sherpa for Windows ${VERSION}
 
-Download **Sherpa-win-x64.zip**, unzip to a folder (not inside Herd), run **Sherpa.exe**.
-
-Keep the whole unzipped folder together — WebView preview needs the companion DLLs next to the exe."
+Download **Sherpa-win-x64.zip**, unzip, run **Sherpa.exe**."
 fi
 
 echo "==> Create release ${TAG}"
