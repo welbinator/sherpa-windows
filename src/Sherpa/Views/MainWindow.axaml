@@ -478,6 +478,30 @@
                   </StackPanel>
                   <TextBlock Classes="muted" TextWrapping="Wrap" FontSize="12"
                              Text="Updates come from GitHub Releases (welbinator/sherpa-windows). Install Sherpa with Setup.exe once — after that, this button keeps you current." />
+
+                  <TextBlock Text="Go back to a previous version" FontWeight="SemiBold" Margin="0,10,0,0" />
+                  <TextBlock Classes="muted" TextWrapping="Wrap" FontSize="12"
+                             Text="Shows up to 5 earlier releases before the one you’re on. Pick one, download it, then Restart &amp; install. (Only versions that shipped with the Setup installer.)" />
+                  <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
+                    <ComboBox Grid.Column="0"
+                              ItemsSource="{Binding PreviousReleases}"
+                              SelectedItem="{Binding SelectedRollbackRelease}"
+                              MinHeight="36"
+                              HorizontalAlignment="Stretch"
+                              PlaceholderText="Previous versions…" />
+                    <Button Grid.Column="1" Margin="8,0,0,0" Content="Refresh list"
+                            Command="{Binding RefreshPreviousReleasesCommand}"
+                            IsEnabled="{Binding !UpdateIsBusy}" />
+                    <StackPanel Grid.Row="1" Grid.ColumnSpan="2" Orientation="Horizontal" Spacing="8" Margin="0,10,0,0">
+                      <Button Classes="primary" Content="Download this version"
+                              Command="{Binding DownloadRollbackCommand}"
+                              IsEnabled="{Binding !UpdateIsBusy}" />
+                      <Button Content="Restart &amp; install"
+                              Command="{Binding ApplyUpdateAndRestartCommand}"
+                              IsEnabled="{Binding RollbackCanApply}" />
+                    </StackPanel>
+                  </Grid>
+                  <TextBlock Text="{Binding RollbackStatus}" Classes="muted" TextWrapping="Wrap" FontSize="12" />
                 </StackPanel>
               </Border>
               <Border Classes="card">

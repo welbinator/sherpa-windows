@@ -36,6 +36,7 @@ public partial class MainViewModel : ViewModelBase
         RefreshUpdateStatus();
         // Quiet background check after install — only when Velopack-installed
         _ = QuietStartupUpdateCheckAsync();
+        _ = LoadPreviousReleasesAsync();
     }
 
     public ObservableCollection<Site> Sites { get; } = new();
@@ -82,7 +83,7 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty] private string previewUrl = "";
     /// <summary>Bumped to force the WebView to reload even when the URL is unchanged.</summary>
     [ObservableProperty] private int previewReloadToken;
-    [ObservableProperty] private string statusLine = "Sherpa for Windows · 0.3.2";
+    [ObservableProperty] private string statusLine = "Sherpa for Windows · 0.3.3";
     [ObservableProperty] private string runtimeStatus = "";
     [ObservableProperty] private string updateStatus = "";
     [ObservableProperty] private string updateVersionLine = "";
@@ -91,6 +92,10 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty] private bool updateCanApply;
     [ObservableProperty] private double updateDownloadProgress;
     [ObservableProperty] private bool updateDownloadIndeterminate;
+    [ObservableProperty] private string rollbackStatus = "";
+    [ObservableProperty] private bool rollbackCanApply;
+    [ObservableProperty] private RollbackRelease? selectedRollbackRelease;
+    public ObservableCollection<RollbackRelease> PreviousReleases { get; } = new();
     [ObservableProperty] private string gitBranchLine = "";
     [ObservableProperty] private string gitLogText = "";
     [ObservableProperty] private string gitCommitMessage = "Update";
@@ -186,7 +191,11 @@ public partial class MainViewModel : ViewModelBase
         IsHostsNav = value == 1;
         IsSettingsNav = value == 2;
         if (value == 1) ReloadHosts();
-        if (value == 2) RefreshUpdateStatus();
+        if (value == 2)
+        {
+            RefreshUpdateStatus();
+            _ = LoadPreviousReleasesAsync();
+        }
     }
 
     partial void OnSelectedDetailTabChanged(int value)
@@ -1658,8 +1667,10 @@ public partial class MainViewModel : ViewModelBase
                 ? "Click Check for updates to look on GitHub Releases."
                 : "Auto-update needs the installed app from Setup.exe (GitHub Releases).";
         }
-        UpdateCanDownload = u.Pending is not null;
-        UpdateCanApply = u.Pending is not null; // after download, still true; Apply validates
+        UpdateCanDownload = u.Pending is not null && !(u.Pending.IsDowngrade);
+        // Apply works for both forward updates and rollback downloads once a package is pending
+        UpdateCanApply = u.Pending is not null;
+        RollbackCanApply = u.Pending is not null && u.Pending.IsDowngrade;
     }
 
     private async Task QuietStartupUpdateCheckAsync()
@@ -1685,6 +1696,39 @@ public partial class MainViewModel : ViewModelBase
         }
     }
 
+    private async Task LoadPreviousReleasesAsync()
+    {
+        try
+        {
+            var (ok, message, releases) = await _svc.Updates.ListPreviousReleasesAsync(5);
+            Ui(() =>
+            {
+                PreviousReleases.Clear();
+                foreach (var r in releases)
+                    PreviousReleases.Add(r);
+
+                if (SelectedRollbackRelease is not null
+                    && PreviousReleases.All(r => r.Version != SelectedRollbackRelease.Version))
+                {
+                    SelectedRollbackRelease = null;
+                }
+
+                if (SelectedRollbackRelease is null && PreviousReleases.Count > 0)
+                    SelectedRollbackRelease = PreviousReleases[0];
+
+                if (string.IsNullOrWhiteSpace(RollbackStatus) || ok)
+                    RollbackStatus = message;
+
+                if (!_svc.Updates.IsInstalled)
+                    RollbackStatus = "Rollback needs the installed app from Setup.exe.";
+            });
+        }
+        catch (Exception ex)
+        {
+            Ui(() => RollbackStatus = "Could not load previous versions: " + ex.Message);
+        }
+    }
+
     [RelayCommand]
     private async Task CheckForUpdatesAsync()
     {
@@ -1696,11 +1740,12 @@ public partial class MainViewModel : ViewModelBase
         {
             var (ok, message, info) = await _svc.Updates.CheckAsync();
             UpdateStatus = message;
-            UpdateCanDownload = ok && info is not null;
-            UpdateCanApply = UpdateCanDownload;
+            UpdateCanDownload = ok && info is not null && !(info?.IsDowngrade ?? false);
+            UpdateCanApply = ok && info is not null;
             StatusLine = message;
-            if (ok && info is not null)
+            if (ok && info is not null && !(info.IsDowngrade))
                 _svc.Notifications.Notify("Update available", message);
+            await LoadPreviousReleasesAsync();
         }
         finally
         {
@@ -1747,9 +1792,75 @@ public partial class MainViewModel : ViewModelBase
     {
         var (ok, message) = _svc.Updates.ApplyAndRestart();
         UpdateStatus = message;
+        RollbackStatus = message;
         StatusLine = message;
         if (!ok)
             _svc.Notifications.Notify("Update", message);
+    }
+
+    [RelayCommand]
+    private async Task RefreshPreviousReleasesAsync()
+    {
+        if (UpdateIsBusy) return;
+        UpdateIsBusy = true;
+        RollbackStatus = "Loading previous versions…";
+        try
+        {
+            await LoadPreviousReleasesAsync();
+        }
+        finally
+        {
+            UpdateIsBusy = false;
+        }
+    }
+
+    [RelayCommand]
+    private async Task DownloadRollbackAsync()
+    {
+        if (UpdateIsBusy) return;
+        if (SelectedRollbackRelease is null)
+        {
+            RollbackStatus = "Pick a previous version from the list first.";
+            return;
+        }
+
+        if (!_svc.Updates.IsInstalled)
+        {
+            RollbackStatus = "Install Sherpa with Setup.exe before rolling back.";
+            return;
+        }
+
+        UpdateIsBusy = true;
+        UpdateDownloadProgress = 0;
+        UpdateDownloadIndeterminate = false;
+        RollbackStatus = $"Downloading {SelectedRollbackRelease.Version}…";
+        UpdateStatus = RollbackStatus;
+        try
+        {
+            var target = SelectedRollbackRelease;
+            var progress = new Progress<int>(p =>
+            {
+                Ui(() =>
+                {
+                    UpdateDownloadProgress = p;
+                    RollbackStatus = $"Downloading {target.Version}… {p}%";
+                    UpdateStatus = RollbackStatus;
+                });
+            });
+            var (ok, message) = await _svc.Updates.DownloadSpecificVersionAsync(target, progress);
+            RollbackStatus = message;
+            UpdateStatus = message;
+            StatusLine = message;
+            UpdateCanApply = ok;
+            RollbackCanApply = ok;
+            if (ok)
+                _svc.Notifications.Notify("Ready to install", message);
+        }
+        finally
+        {
+            UpdateIsBusy = false;
+            RefreshUpdateStatus();
+        }
     }
 
     [RelayCommand]

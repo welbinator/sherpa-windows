@@ -9,10 +9,10 @@
     <ApplicationIcon>Assets/sherpa.ico</ApplicationIcon>
     <RootNamespace>Sherpa</RootNamespace>
     <AssemblyName>Sherpa</AssemblyName>
-    <Version>0.3.2</Version>
-    <AssemblyVersion>0.3.2.0</AssemblyVersion>
-    <FileVersion>0.3.2.0</FileVersion>
-    <InformationalVersion>0.3.2+mac-icons</InformationalVersion>
+    <Version>0.3.3</Version>
+    <AssemblyVersion>0.3.3.0</AssemblyVersion>
+    <FileVersion>0.3.3.0</FileVersion>
+    <InformationalVersion>0.3.3+rollback</InformationalVersion>
     <Product>Sherpa</Product>
     <Company>Sherpa</Company>
     <Authors>welbinator</Authors>
