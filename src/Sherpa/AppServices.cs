@@ -17,6 +17,7 @@ public sealed class AppServices
     public SiteCommandsService Commands { get; }
     public InstallCoordinator Install { get; }
     public NotificationService Notifications { get; } = new();
+    public UpdateService Updates { get; } = new();
     public GitHubClient GitHub { get; } = new();
     public CloudflarePagesClient Cloudflare { get; } = new();
     public PackagistClient Packagist { get; } = new();

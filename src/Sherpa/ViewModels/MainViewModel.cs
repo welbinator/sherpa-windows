@@ -33,6 +33,9 @@ public partial class MainViewModel : ViewModelBase
         RefreshRuntimeStatus();
         LoadSettingsFields();
         ResetNewSiteForm();
+        RefreshUpdateStatus();
+        // Quiet background check after install — only when Velopack-installed
+        _ = QuietStartupUpdateCheckAsync();
     }
 
     public ObservableCollection<Site> Sites { get; } = new();
@@ -79,8 +82,15 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty] private string previewUrl = "";
     /// <summary>Bumped to force the WebView to reload even when the URL is unchanged.</summary>
     [ObservableProperty] private int previewReloadToken;
-    [ObservableProperty] private string statusLine = "Sherpa for Windows · 0.2.12";
+    [ObservableProperty] private string statusLine = "Sherpa for Windows · 0.3.0";
     [ObservableProperty] private string runtimeStatus = "";
+    [ObservableProperty] private string updateStatus = "";
+    [ObservableProperty] private string updateVersionLine = "";
+    [ObservableProperty] private bool updateIsBusy;
+    [ObservableProperty] private bool updateCanDownload;
+    [ObservableProperty] private bool updateCanApply;
+    [ObservableProperty] private double updateDownloadProgress;
+    [ObservableProperty] private bool updateDownloadIndeterminate;
     [ObservableProperty] private string gitBranchLine = "";
     [ObservableProperty] private string gitLogText = "";
     [ObservableProperty] private string gitCommitMessage = "Update";
@@ -176,6 +186,7 @@ public partial class MainViewModel : ViewModelBase
         IsHostsNav = value == 1;
         IsSettingsNav = value == 2;
         if (value == 1) ReloadHosts();
+        if (value == 2) RefreshUpdateStatus();
     }
 
     partial void OnSelectedDetailTabChanged(int value)
@@ -1562,6 +1573,112 @@ public partial class MainViewModel : ViewModelBase
         _svc.Preferences.Save(p);
         RefreshRuntimeStatus();
         StatusLine = "Changed settings saved.";
+    }
+
+    private void RefreshUpdateStatus()
+    {
+        var u = _svc.Updates;
+        UpdateVersionLine = u.IsInstalled
+            ? $"Installed version {u.AppVersionDisplay}"
+            : $"Dev / portable build {u.AppVersionDisplay} (install Setup.exe for auto-update)";
+        if (string.IsNullOrWhiteSpace(UpdateStatus))
+        {
+            UpdateStatus = u.IsInstalled
+                ? "Click Check for updates to look on GitHub Releases."
+                : "Auto-update needs the installed app from Setup.exe (GitHub Releases).";
+        }
+        UpdateCanDownload = u.Pending is not null;
+        UpdateCanApply = u.Pending is not null; // after download, still true; Apply validates
+    }
+
+    private async Task QuietStartupUpdateCheckAsync()
+    {
+        try
+        {
+            await Task.Delay(2500);
+            if (!_svc.Updates.IsInstalled) return;
+            var (ok, message, info) = await _svc.Updates.CheckAsync();
+            Ui(() =>
+            {
+                if (!ok || info is null) return;
+                UpdateStatus = message;
+                UpdateCanDownload = true;
+                StatusLine = message;
+                _svc.Notifications.Notify("Update available", message);
+                RefreshUpdateStatus();
+            });
+        }
+        catch
+        {
+            // Quiet — never block startup on update noise
+        }
+    }
+
+    [RelayCommand]
+    private async Task CheckForUpdatesAsync()
+    {
+        if (UpdateIsBusy) return;
+        UpdateIsBusy = true;
+        UpdateDownloadIndeterminate = true;
+        UpdateStatus = "Checking GitHub Releases…";
+        try
+        {
+            var (ok, message, info) = await _svc.Updates.CheckAsync();
+            UpdateStatus = message;
+            UpdateCanDownload = ok && info is not null;
+            UpdateCanApply = UpdateCanDownload;
+            StatusLine = message;
+            if (ok && info is not null)
+                _svc.Notifications.Notify("Update available", message);
+        }
+        finally
+        {
+            UpdateIsBusy = false;
+            UpdateDownloadIndeterminate = false;
+            RefreshUpdateStatus();
+        }
+    }
+
+    [RelayCommand]
+    private async Task DownloadUpdateAsync()
+    {
+        if (UpdateIsBusy) return;
+        UpdateIsBusy = true;
+        UpdateDownloadProgress = 0;
+        UpdateDownloadIndeterminate = false;
+        UpdateStatus = "Downloading update…";
+        try
+        {
+            var progress = new Progress<int>(p =>
+            {
+                Ui(() =>
+                {
+                    UpdateDownloadProgress = p;
+                    UpdateStatus = $"Downloading update… {p}%";
+                });
+            });
+            var (ok, message) = await _svc.Updates.DownloadAsync(progress);
+            UpdateStatus = message;
+            StatusLine = message;
+            UpdateCanApply = ok;
+            if (ok)
+                _svc.Notifications.Notify("Update ready", message);
+        }
+        finally
+        {
+            UpdateIsBusy = false;
+            RefreshUpdateStatus();
+        }
+    }
+
+    [RelayCommand]
+    private void ApplyUpdateAndRestart()
+    {
+        var (ok, message) = _svc.Updates.ApplyAndRestart();
+        UpdateStatus = message;
+        StatusLine = message;
+        if (!ok)
+            _svc.Notifications.Notify("Update", message);
     }
 
     [RelayCommand]

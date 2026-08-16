@@ -2,56 +2,45 @@
 
 **Jack-crafted** Windows clone of [Sherpa](https://shepherd.app) — local Statamic / Laravel site manager.
 
-Version **0.2.12**. Reverse-engineered from the Mac app binary and rebuilt to match its flows (not a pixel-perfect skin).
+Version **0.3.0** — installable app with **GitHub auto-update** (Velopack).
 
-## Download
+## Download / install
 
 1. Open **[Releases](https://github.com/welbinator/sherpa-windows/releases/latest)**
-2. Download **`Sherpa-win-x64.zip`**
-3. Unzip anywhere (not inside your Herd folder)
-4. Run **`Sherpa.exe`** (leave the 2 small WebView2 `.dll` files next to it — needed for site preview)
+2. Download **`Sherpa-win-Setup.exe`**
+3. Run Setup (SmartScreen → *More info* → *Run anyway* if needed)
+4. Sherpa installs, opens, and adds a Start Menu shortcut
 
-SmartScreen may warn on unsigned builds → *More info* → *Run anyway*.
+### Updates
 
-### Maintainers — shipping a version
+**Settings → Check for updates** looks at GitHub Releases, downloads, then **Restart & install**.
 
-Pushing `main` is **not** enough. Users only see versions that are **GitHub Releases**:
+You can also wait for the quiet check a few seconds after launch (installed builds only).
 
-```bash
-scripts/release.sh 0.2.12 "notes here"
-```
+### Requirements
 
-Ships a minimal zip: `Sherpa.exe` + `WebView2Loader.dll` + `Microsoft.Web.WebView2.Core.dll` (WebView2 cannot live fully inside a single-file bundle).
-
-### On your PC
 - Windows 10/11 x64  
 - [Git for Windows](https://git-scm.com/download/win)  
 - [Laravel Herd](https://herd.laravel.com/) (PHP + Composer + `.test` sites)  
-- [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/) (already on most PCs via Edge)  
-- Node optional (frontend builds / static publish)
+- [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/) (usually already installed with Edge)
 
-**Sherpa.exe does not need to live in the Herd folder.** In Settings, set **Default sites folder** to your Herd projects folder (often `C:\Users\You\Herd`).
+**Sherpa does not need to live in the Herd folder.** In Settings, set **Default sites folder** to your Herd projects folder (often `C:\Users\You\Herd`).
 
-## What matches the Mac app (0.2)
+## Maintainers — shipping
 
-| Area | Notes |
-|------|--------|
-| Sidebar Sites / Hosts / Settings | Same IA |
-| **New Site** wizard | Identity → Marketplace starter kits (Blank default, All/Free/Paid) → Flat/SQLite/MySQL → Options (Pro locked off, SSG, Git, super user) |
-| Import Existing Site | Requires `composer.json` |
-| Overview | Real WebView2 site preview, Statamic utilities, icon toolbar for Herd/HTTPS/open |
-| Git | Save changes, Pull, Push, **Sync** (commit → pull --rebase --autostash → push), file checkboxes, Back up to GitHub |
-| Packages | require / update / install |
-| Commands | cache / stache / glide / custom please\|artisan |
-| Deploy | Host prerequisites; connect Forge / Cloud / CF Pages / Netlify |
-| Secrets | Windows DPAPI store (Keychain equivalent) |
-| ConflictTranslator | Human advice + Copy errors |
+```bash
+# Local installer only (Desktop\Sherpa-Setup):
+scripts/pack-velopack.sh 0.3.0
 
-Still catching up: Marketplace starter kit browser, full one-click Forge/Cloud/static publish wizards end-to-end, favicons/previews.
+# Full ship: pack + upload Velopack assets to GitHub Releases
+scripts/release.sh 0.3.0 "notes here"
+```
 
-See [docs/REVERSE_ENGINEERING.md](docs/REVERSE_ENGINEERING.md).
+Requires Windows-side .NET 8 SDK + `vpk` global tool (script installs/uses them under `%LocalAppData%\Microsoft\dotnet`).
 
-## Build from source
+Pushing `main` alone is **not** enough — users need a **GitHub Release** with Setup + Velopack feed files.
+
+## Build from source (dev)
 
 ```powershell
 git clone https://github.com/welbinator/sherpa-windows.git
@@ -60,10 +49,14 @@ dotnet publish src/Sherpa/Sherpa.csproj -c Release -r win-x64 --self-contained t
 .\publish\win-x64\Sherpa.exe
 ```
 
+Dev/portable builds show “install Setup.exe for auto-update” in Settings.
+
 ## Architecture
 
-Same module map as Mac Sherpa: `Models/`, `Clients/`, `Services/` (including `HerdService`, coordinators, stores), `Support/ConflictTranslator`, `AppServices`, Views bind ViewModels only.
+Same module map as Mac Sherpa: `Models/`, `Clients/`, `Services/` (including `HerdService`, `UpdateService`, coordinators, stores), `Support/ConflictTranslator`, `AppServices`, Views bind ViewModels only.
+
+Auto-update: **Velopack** + `GithubSource` → `welbinator/sherpa-windows` releases.
 
 ## License
 
-MIT — community Windows port. Sherpa/Shepherd Mac app © its authors.
+See repository.

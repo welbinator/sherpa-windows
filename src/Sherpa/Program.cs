@@ -2,8 +2,10 @@ using System;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.WebView.Desktop;
+using Velopack;
 
 namespace Sherpa;
 
@@ -12,7 +14,18 @@ internal static class Program
     [STAThread]
     public static void Main(string[] args)
     {
-        // Catch anything that would otherwise make double-click "do nothing".
+        // Velopack must run before any other startup work (handles install/update hooks).
+        try
+        {
+            VelopackApp.Build()
+                .OnFirstRun(_ => { /* reserved — first-run tips later */ })
+                .Run();
+        }
+        catch (Exception ex)
+        {
+            CrashLog.Write("VelopackApp.Run", ex, showDialog: false);
+        }
+
         AppDomain.CurrentDomain.UnhandledException += (_, e) =>
         {
             if (e.ExceptionObject is Exception ex)
@@ -42,7 +55,6 @@ internal static class Program
             .WithInterFont()
             .LogToTrace();
 
-        // Preview is optional — never let WebView registration prevent the app from opening.
         try
         {
             builder = builder.UseDesktopWebView();
@@ -91,7 +103,6 @@ internal static class Program
                 break;
             }
 
-            // Also copy Core beside stable native dir if present next to exe (helps some hosts)
             if (!string.IsNullOrWhiteSpace(exeDir))
             {
                 var coreSrc = Path.Combine(exeDir, "Microsoft.Web.WebView2.Core.dll");
@@ -151,11 +162,10 @@ internal static class CrashLog
             MessageBoxW(IntPtr.Zero,
                 "Sherpa could not start.\n\n" +
                 ex.Message + "\n\n" +
-                "A log was written to:\n" +
-                string.Join("\n", CandidateLogPaths()) +
-                "\n\nIf you downloaded a zip: Extract All first, then right-click the folder → Properties → Unblock if shown.",
+                "A log was written to Desktop / %LocalAppData%\\Sherpa\\sherpa-crash.log\n\n" +
+                "Prefer the installer from GitHub Releases (Setup.exe), not running from inside a zip.",
                 "Sherpa",
-                0x00000010 /* MB_ICONERROR */);
+                0x00000010);
         }
         catch { /* ignore */ }
     }

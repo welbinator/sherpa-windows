@@ -1,20 +1,16 @@
 #!/usr/bin/env bash
-# Create a GitHub Release for Sherpa Windows and upload the zip.
-# Usage: scripts/release.sh 0.2.12 "Optional release notes markdown"
+# Ship Sherpa via Velopack → GitHub Releases (installer + update feed).
+# Usage: scripts/release.sh 0.3.0 "Optional release notes markdown"
 #
-# Zip contents (minimal):
-#   README.txt
-#   Sherpa.exe
-#   Microsoft.Web.WebView2.Core.dll
-#   WebView2Loader.dll
-# Never ship .pdb
+# What users download: **Sherpa-win-Setup.exe** (run once).
+# Update feed assets (nupkg, RELEASES, etc.) are also uploaded so
+# Settings → Check for updates works.
 set -euo pipefail
 
 VERSION="${1:-}"
 NOTES="${2:-}"
 if [[ -z "$VERSION" ]]; then
   echo "Usage: $0 <version> [notes]" >&2
-  echo "  e.g. $0 0.2.12 'Bug fixes'" >&2
   exit 1
 fi
 VERSION="${VERSION#v}"
@@ -36,101 +32,110 @@ if [[ -z "$TOKEN" ]]; then
 fi
 
 export PATH="${HOME}/.dotnet:${PATH}"
+chmod +x scripts/pack-velopack.sh
+bash scripts/pack-velopack.sh "$VERSION"
 
-echo "==> Clean publish dir"
-rm -rf publish/win-x64
-mkdir -p publish/win-x64
-
-echo "==> Publish win-x64 (single-file app + external WebView2 bits, no pdb)"
-dotnet publish src/Sherpa/Sherpa.csproj -c Release -r win-x64 --self-contained true -o publish/win-x64 \
-  -p:PublishSingleFile=true \
-  -p:IncludeNativeLibrariesForSelfExtract=true \
-  -p:DebugType=none \
-  -p:DebugSymbols=false
-
-if [[ ! -f publish/win-x64/Sherpa.exe ]]; then
-  echo "ERROR: publish/win-x64/Sherpa.exe missing" >&2
+if [[ ! -d releases ]] || [[ -z "$(ls -A releases 2>/dev/null)" ]]; then
+  echo "ERROR: releases/ empty after pack" >&2
   exit 1
 fi
 
-# Guarantee WebView2 companions
-if [[ ! -f publish/win-x64/WebView2Loader.dll ]]; then
-  LOADER="$(find "${HOME}/.nuget/packages/webview.avalonia.windows" -path '*win-x64*WebView2Loader.dll' | head -n1 || true)"
-  [[ -n "$LOADER" ]] && cp -f "$LOADER" publish/win-x64/WebView2Loader.dll
-fi
-if [[ ! -f publish/win-x64/Microsoft.Web.WebView2.Core.dll ]]; then
-  CORE="$(find "${HOME}/.nuget/packages/webview.avalonia.windows" -name 'Microsoft.Web.WebView2.Core.dll' | head -n1 || true)"
-  [[ -n "$CORE" ]] && cp -f "$CORE" publish/win-x64/Microsoft.Web.WebView2.Core.dll
+# Find Setup exe for a friendly asset name
+SETUP_SRC=$(find releases -maxdepth 1 -type f -iname '*Setup*.exe' | head -n1 || true)
+if [[ -z "$SETUP_SRC" ]]; then
+  SETUP_SRC=$(find releases -maxdepth 1 -type f -iname '*.exe' | head -n1 || true)
 fi
 
-# Strip any pdb that sneaked in
-rm -f publish/win-x64/*.pdb
-
-echo "==> Stage zip (exe + 2 WebView2 DLLs + README only)"
-mkdir -p artifacts
-rm -f artifacts/Sherpa-win-x64.zip
-STAGE=$(mktemp -d)
-cp -f publish/win-x64/Sherpa.exe "$STAGE/"
-cp -f publish/win-x64/WebView2Loader.dll "$STAGE/"
-cp -f publish/win-x64/Microsoft.Web.WebView2.Core.dll "$STAGE/"
-cp -f "$ROOT/assets/README-SHIP.txt" "$STAGE/README.txt"
-rm -f "$STAGE"/*.pdb
-
-if [[ ! -f "$STAGE/WebView2Loader.dll" || ! -f "$STAGE/Microsoft.Web.WebView2.Core.dll" ]]; then
-  echo "ERROR: WebView2 companion DLLs missing" >&2
-  ls -la "$STAGE" >&2
-  exit 1
-fi
-
-(cd "$STAGE" && zip -qr "$ROOT/artifacts/Sherpa-win-x64.zip" .)
-rm -rf "$STAGE"
-ZIP="$ROOT/artifacts/Sherpa-win-x64.zip"
-ls -lh "$ZIP"
-unzip -l "$ZIP"
-
-# Sanity: refuse pdb in the zip
-if unzip -l "$ZIP" | grep -qi '\.pdb'; then
-  echo "ERROR: zip contains a .pdb — refusing to ship" >&2
-  exit 1
-fi
-
+NOTES_FILE=$(mktemp)
 if [[ -z "$NOTES" ]]; then
-  NOTES="Sherpa for Windows ${VERSION}
+  cat > "$NOTES_FILE" <<EOF
+## Sherpa for Windows ${VERSION}
 
-**Important:** Right-click the zip → Extract All, then run Sherpa.exe from the extracted folder.
-Keep the two .dll files next to Sherpa.exe. Do not run it from inside the zip window."
+### Install
+1. Download **Sherpa-win-Setup.exe**
+2. Run it (SmartScreen → More info → Run anyway if needed)
+3. Sherpa opens from the Start Menu afterward
+
+### Updates
+**Settings → Check for updates** downloads newer GitHub Releases automatically.
+
+Do **not** run random exe files from inside a zip — use Setup.
+EOF
+else
+  printf '%s\n' "$NOTES" > "$NOTES_FILE"
 fi
 
-echo "==> Create release ${TAG}"
-PAYLOAD=$(VERSION="$VERSION" TAG="$TAG" NOTES="$NOTES" python3 - <<'PY'
-import json, os
-print(json.dumps({
-    "tag_name": os.environ["TAG"],
-    "target_commitish": "main",
-    "name": os.environ["TAG"],
-    "body": os.environ["NOTES"],
-    "draft": False,
-    "prerelease": False,
-}))
-PY
+echo "==> Upload Velopack assets to GitHub Releases via vpk"
+WIN_WORK_WIN='C:\Users\james\AppData\Local\Sherpa-build'
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "
+\$ErrorActionPreference = 'Stop'
+\$env:DOTNET_ROOT = 'C:\Users\james\AppData\Local\Microsoft\dotnet'
+\$env:Path = \"\$env:DOTNET_ROOT;\$env:USERPROFILE\.dotnet\tools;\" + \$env:Path
+\$env:VPK_TOKEN = '$TOKEN'
+& vpk upload github \
+  --outputDir '$WIN_WORK_WIN\releases' \
+  --repoUrl 'https://github.com/welbinator/sherpa-windows' \
+  --token '$TOKEN' \
+  --publish \
+  --merge \
+  --tag '$TAG' \
+  --releaseName '$TAG' \
+  --targetCommitish 'main' \
+  -y
+if (\$LASTEXITCODE -ne 0) { exit \$LASTEXITCODE }
+"
+
+# Also ensure Setup is named clearly on the release (vpk may already upload it)
+if [[ -n "$SETUP_SRC" ]]; then
+  echo "==> Ensure friendly Setup asset name on release"
+  # Get release id
+  REL=$(curl -sS -H "Authorization: token ${TOKEN}" -H "Accept: application/vnd.github+json" \
+    "https://api.github.com/repos/welbinator/sherpa-windows/releases/tags/${TAG}")
+  UPLOAD=$(echo "$REL" | python3 -c "import sys,json;d=json.load(sys.stdin);print(d.get('upload_url','').split('{')[0])" || true)
+  HTML=$(echo "$REL" | python3 -c "import sys,json;d=json.load(sys.stdin);print(d.get('html_url',''))" || true)
+  if [[ -n "$UPLOAD" ]]; then
+    # Delete existing Sherpa-win-Setup.exe if present, then upload
+    echo "$REL" | python3 -c "
+import sys,json,os,urllib.request
+d=json.load(sys.stdin)
+token=os.environ.get('TOKEN','')
+" 2>/dev/null || true
+    curl -sS -X POST \
+      -H "Authorization: token ${TOKEN}" \
+      -H "Content-Type: application/octet-stream" \
+      -H "Accept: application/vnd.github+json" \
+      --data-binary @"$SETUP_SRC" \
+      "${UPLOAD}?name=Sherpa-win-Setup.exe" \
+      | python3 -c "import sys,json;d=json.load(sys.stdin);print(d.get('browser_download_url', d.get('message', d)))" || true
+  fi
+  echo "Release: ${HTML:-https://github.com/welbinator/sherpa-windows/releases/tag/${TAG}}"
+fi
+
+# Patch release body with notes if empty-ish
+python3 - <<PY
+import json, os, urllib.request
+token = """${TOKEN}"""
+tag = """${TAG}"""
+notes = open("""${NOTES_FILE}""").read()
+req = urllib.request.Request(
+    f"https://api.github.com/repos/welbinator/sherpa-windows/releases/tags/{tag}",
+    headers={"Authorization": f"token {token}", "Accept": "application/vnd.github+json"},
 )
+with urllib.request.urlopen(req) as r:
+    rel = json.load(r)
+body = (rel.get("body") or "").strip()
+if len(body) < 40:
+    data = json.dumps({"body": notes}).encode()
+    req2 = urllib.request.Request(
+        f"https://api.github.com/repos/welbinator/sherpa-windows/releases/{rel['id']}",
+        data=data, method="PATCH",
+        headers={"Authorization": f"token {token}", "Accept": "application/vnd.github+json", "Content-Type": "application/json"},
+    )
+    urllib.request.urlopen(req2)
+    print("Release notes updated")
+else:
+    print("Release notes already set")
+PY
 
-RESP=$(curl -sS -X POST \
-  -H "Authorization: token ${TOKEN}" \
-  -H "Accept: application/vnd.github+json" \
-  "https://api.github.com/repos/welbinator/sherpa-windows/releases" \
-  -d "$PAYLOAD")
-
-UPLOAD=$(echo "$RESP" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('upload_url','').split('{')[0]); assert 'id' in d, d")
-HTML=$(echo "$RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('html_url',''))")
-
-echo "==> Upload zip"
-ASSET=$(curl -sS -X POST \
-  -H "Authorization: token ${TOKEN}" \
-  -H "Content-Type: application/zip" \
-  -H "Accept: application/vnd.github+json" \
-  --data-binary @"$ZIP" \
-  "${UPLOAD}?name=Sherpa-win-x64.zip")
-
-echo "$ASSET" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('browser_download_url', d))"
-echo "Release: $HTML"
+rm -f "$NOTES_FILE"
+echo "Done shipping $TAG"
