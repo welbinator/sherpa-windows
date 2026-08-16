@@ -75,7 +75,11 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty] private string sitePreviewBody = "Select a site to load a preview.";
     [ObservableProperty] private string sitePreviewUrlLine = "";
     [ObservableProperty] private bool sitePreviewIsError;
-    [ObservableProperty] private string statusLine = "Sherpa for Windows · 0.2.7";
+    /// <summary>URL loaded into the embedded WebView (real browser preview).</summary>
+    [ObservableProperty] private string previewUrl = "";
+    /// <summary>Bumped to force the WebView to reload even when the URL is unchanged.</summary>
+    [ObservableProperty] private int previewReloadToken;
+    [ObservableProperty] private string statusLine = "Sherpa for Windows · 0.2.8";
     [ObservableProperty] private string runtimeStatus = "";
     [ObservableProperty] private string gitBranchLine = "";
     [ObservableProperty] private string gitLogText = "";
@@ -659,6 +663,7 @@ public partial class MainViewModel : ViewModelBase
             SitePreviewBody = "Select a site to load a preview.";
             SitePreviewUrlLine = "";
             SitePreviewIsError = false;
+            PreviewUrl = "";
             return;
         }
         SitePreviewTitle = site.Name;
@@ -667,21 +672,29 @@ public partial class MainViewModel : ViewModelBase
         {
             SitePreviewSubtitle = site.Url ?? "Installing…";
             SitePreviewBadge = "Installing";
-            SitePreviewBody = "Site is installing…\n\nPreview will refresh when setup finishes.";
+            SitePreviewBody = "Site is installing…\n\nPreview will load when setup finishes.";
             SitePreviewIsError = false;
             InstallPhaseLabel = string.IsNullOrWhiteSpace(site.StartingPoint) ? "Installing" : site.StartingPoint;
+            PreviewUrl = "";
         }
         else
         {
             SitePreviewSubtitle = site.Url ?? site.Path;
             SitePreviewBadge = site.Kind.ToString();
-            if (string.IsNullOrWhiteSpace(SitePreviewBody) || SitePreviewBody.StartsWith("Select a site", StringComparison.Ordinal))
-                SitePreviewBody = "Click Refresh preview to load this site.";
+            SitePreviewBody = "";
+            // Kick the embedded browser at the site URL
+            if (!string.IsNullOrWhiteSpace(site.Url))
+            {
+                PreviewUrl = site.Url!;
+                PreviewReloadToken++;
+            }
         }
     }
 
     private async Task RefreshPreviewHttpAsync(Site site)
     {
+        // Real preview is the WebView. We still probe HTTP so the status line can show
+        // reachable / cert / Herd problems in plain language under the frame.
         if (string.IsNullOrWhiteSpace(site.Url))
         {
             Ui(() =>
@@ -689,6 +702,7 @@ public partial class MainViewModel : ViewModelBase
                 SitePreviewBody = "No URL set for this site yet.";
                 SitePreviewUrlLine = "";
                 SitePreviewIsError = true;
+                PreviewUrl = "";
             });
             return;
         }
@@ -696,55 +710,43 @@ public partial class MainViewModel : ViewModelBase
         Ui(() =>
         {
             SitePreviewUrlLine = site.Url;
-            SitePreviewBody = "Loading preview…";
             SitePreviewIsError = false;
+            SitePreviewBody = "";
+            // Always re-point the WebView (and bump token so same-URL reload works)
+            PreviewUrl = site.Url!;
+            PreviewReloadToken++;
         });
 
         try
         {
             await _svc.Herd.EnsureRunningAsync(_ => { });
-            using var http = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(6) };
-            // Don't follow forever; we want the body even on error pages
-            using var res = await http.GetAsync(site.Url);
-            var body = await res.Content.ReadAsStringAsync();
-            // Prefer readable text; strip tags lightly for HTML success pages
-            var display = body;
-            if (display.Length > 12000)
-                display = display.Substring(0, 12000) + "\n…";
-
-            var looksHtml = display.Contains("<html", StringComparison.OrdinalIgnoreCase)
-                            || display.Contains("<!DOCTYPE", StringComparison.OrdinalIgnoreCase);
-            if (looksHtml && res.IsSuccessStatusCode)
+            using var handler = new System.Net.Http.HttpClientHandler
             {
-                // Pull title if present for a friendlier success preview
-                var title = "";
-                var m = System.Text.RegularExpressions.Regex.Match(display, "<title[^>]*>(.*?)</title>",
-                    System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Singleline);
-                if (m.Success) title = System.Net.WebUtility.HtmlDecode(m.Groups[1].Value.Trim());
-                display = string.IsNullOrWhiteSpace(title)
-                    ? $"HTTP {(int)res.StatusCode} OK\n\n{site.Url}\n\n(Page HTML loaded — open in browser for full render.)"
-                    : $"HTTP {(int)res.StatusCode} OK\n\n{title}\n{site.Url}\n\n(Page HTML loaded — open in browser for full render.)";
-            }
-
+                // Local Herd certs are usually trusted; if not, still let WebView try.
+                ServerCertificateCustomValidationCallback =
+                    System.Net.Http.HttpClientHandler.DangerousAcceptAnyServerCertificateValidator,
+            };
+            using var http = new System.Net.Http.HttpClient(handler) { Timeout = TimeSpan.FromSeconds(6) };
+            using var res = await http.GetAsync(site.Url);
             Ui(() =>
             {
                 SitePreviewBadge = $"{(int)res.StatusCode}";
                 SitePreviewSubtitle = $"{site.Url} · HTTP {(int)res.StatusCode}";
-                SitePreviewBody = string.IsNullOrWhiteSpace(display) ? $"(empty response) HTTP {(int)res.StatusCode}" : display;
                 SitePreviewIsError = !res.IsSuccessStatusCode;
-                SitePreviewUrlLine = site.Url;
+                if (!res.IsSuccessStatusCode)
+                    SitePreviewBody = $"HTTP {(int)res.StatusCode} — page may still render below if the server returned HTML.";
             });
         }
         catch (Exception ex)
         {
             Ui(() =>
             {
-                SitePreviewBadge = "Error";
-                SitePreviewSubtitle = site.Url + " · unreachable";
-                SitePreviewBody = "Could not load preview.\n\n" + ex.Message +
-                                  "\n\nTip: make sure Herd is running and the site is parked/linked.";
-                SitePreviewIsError = true;
-                SitePreviewUrlLine = site.Url;
+                SitePreviewBadge = "…";
+                SitePreviewSubtitle = site.Url + " · checking…";
+                // Don't blank the WebView — it may still load even if our probe failed
+                SitePreviewIsError = false;
+                SitePreviewBody = "";
+                StatusLine = "Preview probe: " + ex.Message;
             });
         }
     }

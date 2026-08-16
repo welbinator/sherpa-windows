@@ -1,5 +1,6 @@
 using System;
 using Avalonia;
+using Avalonia.WebView.Desktop;
 
 namespace Sherpa;
 
@@ -13,5 +14,6 @@ internal static class Program
         => AppBuilder.Configure<App>()
             .UsePlatformDetect()
             .WithInterFont()
-            .LogToTrace();
+            .LogToTrace()
+            .UseDesktopWebView();
 }

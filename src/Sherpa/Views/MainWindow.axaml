@@ -2,6 +2,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:Sherpa.ViewModels"
         xmlns:models="using:Sherpa.Models"
+        xmlns:wv="clr-namespace:AvaloniaWebView;assembly=Avalonia.WebView"
         x:Class="Sherpa.Views.MainWindow"
         x:DataType="vm:MainViewModel"
         Title="Sherpa"
@@ -126,23 +127,39 @@
               <!-- OVERVIEW -->
               <ScrollViewer IsVisible="{Binding IsDetailOverview}" Padding="28,8,28,48">
                 <StackPanel Spacing="16" MaxWidth="880" HorizontalAlignment="Center">
-                  <!-- Live preview card (Mac-style) -->
+                  <!-- Live browser preview (WebView2) -->
                   <Border Classes="card" Padding="14">
                     <StackPanel Spacing="10">
-                      <Border Classes="preview-frame" MinHeight="280" MaxHeight="420">
-                        <ScrollViewer Padding="16" HorizontalScrollBarVisibility="Disabled">
-                          <TextBlock Text="{Binding SitePreviewBody}"
-                                     FontFamily="Cascadia Mono, Consolas, monospace"
-                                     FontSize="12"
-                                     TextWrapping="Wrap"
-                                     Foreground="#1C1C1E" />
-                        </ScrollViewer>
+                      <Border Classes="preview-frame" MinHeight="320" Height="380">
+                        <Panel>
+                          <!-- Real rendered page -->
+                          <wv:WebView x:Name="SitePreviewWebView"
+                                      HorizontalAlignment="Stretch"
+                                      VerticalAlignment="Stretch" />
+                          <!-- Fallback / status overlay when no URL yet -->
+                          <Border IsVisible="{Binding PreviewUrl, Converter={x:Static StringConverters.IsNullOrEmpty}}"
+                                  Background="#FFFFFF"
+                                  IsHitTestVisible="False">
+                            <TextBlock Text="{Binding SitePreviewBody}"
+                                       FontFamily="Cascadia Mono, Consolas, monospace"
+                                       FontSize="12"
+                                       TextWrapping="Wrap"
+                                       Foreground="#1C1C1E"
+                                       Margin="16"
+                                       VerticalAlignment="Center"
+                                       HorizontalAlignment="Center"
+                                       TextAlignment="Center" />
+                          </Border>
+                        </Panel>
                       </Border>
                       <Grid ColumnDefinitions="*,Auto">
                         <TextBlock Text="{Binding SitePreviewUrlLine}" Classes="muted" VerticalAlignment="Center"
                                    TextTrimming="CharacterEllipsis" />
-                        <Button Grid.Column="1" Classes="ghost" Content="Refresh preview"
-                                Command="{Binding RefreshPreviewCommand}" />
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                          <TextBlock Text="{Binding SitePreviewBadge}" Classes="dim" VerticalAlignment="Center" />
+                          <Button Classes="ghost" Content="Refresh preview"
+                                  Command="{Binding RefreshPreviewCommand}" />
+                        </StackPanel>
                       </Grid>
                     </StackPanel>
                   </Border>

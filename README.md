@@ -2,7 +2,7 @@
 
 **Jack-crafted** Windows clone of [Sherpa](https://shepherd.app) — local Statamic / Laravel site manager.
 
-Version **0.2.7**. Reverse-engineered from the Mac app binary and rebuilt to match its flows (not a pixel-perfect skin).
+Version **0.2.8**. Reverse-engineered from the Mac app binary and rebuilt to match its flows (not a pixel-perfect skin).
 
 ## Download
 
