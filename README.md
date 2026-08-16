@@ -2,14 +2,14 @@
 
 **Jack-crafted** Windows clone of [Sherpa](https://shepherd.app) — local Statamic / Laravel site manager.
 
-Version **0.2.8**. Reverse-engineered from the Mac app binary and rebuilt to match its flows (not a pixel-perfect skin).
+Version **0.2.9**. Reverse-engineered from the Mac app binary and rebuilt to match its flows (not a pixel-perfect skin).
 
 ## Download
 
 1. Open **[Releases](https://github.com/welbinator/sherpa-windows/releases/latest)**
 2. Download **`Sherpa-win-x64.zip`**
-3. Unzip anywhere (not inside your Herd folder)
-4. Run **`Sherpa.exe`**
+3. Unzip to a folder and **keep everything together** (not a single-exe anymore — WebView preview needs the DLLs)
+4. Run **`Sherpa.exe`** from that folder
 
 SmartScreen may warn on unsigned builds → *More info* → *Run anyway*.
 
@@ -18,19 +18,16 @@ SmartScreen may warn on unsigned builds → *More info* → *Run anyway*.
 Pushing `main` is **not** enough. Users only see versions that are **GitHub Releases**:
 
 ```bash
-# 1) publish self-contained exe
-dotnet publish src/Sherpa/Sherpa.csproj -c Release -r win-x64 --self-contained true -o publish/win-x64
-# 2) zip
-mkdir -p artifacts && (cd publish/win-x64 && zip -qr ../../artifacts/Sherpa-win-x64.zip Sherpa.exe)
-# 3) git tag + push, then create Release vX.Y.Z and upload artifacts/Sherpa-win-x64.zip
+scripts/release.sh 0.2.9 "notes here"
 ```
 
-Or: `scripts/release.sh 0.2.7 "notes here"`
+That publishes a **multi-file** self-contained build (so `WebView2Loader.dll` ships beside the exe), zips the whole folder, and uploads the Release asset.
 
 ### On your PC
 - Windows 10/11 x64  
 - [Git for Windows](https://git-scm.com/download/win)  
 - [Laravel Herd](https://herd.laravel.com/) (PHP + Composer + `.test` sites)  
+- [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/) (already on most PCs via Edge)  
 - Node optional (frontend builds / static publish)
 
 **Sherpa.exe does not need to live in the Herd folder.** In Settings, set **Default sites folder** to your Herd projects folder (often `C:\Users\You\Herd`).
@@ -42,7 +39,7 @@ Or: `scripts/release.sh 0.2.7 "notes here"`
 | Sidebar Sites / Hosts / Settings | Same IA |
 | **New Site** wizard | Identity → Marketplace starter kits (Blank default, All/Free/Paid) → Flat/SQLite/MySQL → Options (Pro locked off, SSG, Git, super user) |
 | Import Existing Site | Requires `composer.json` |
-| Overview | Path, URL, Link to Herd, Secure HTTPS, Create User, Commands, Remove/Delete |
+| Overview | Real WebView2 site preview, Statamic utilities, icon toolbar for Herd/HTTPS/open |
 | Git | Save changes, Pull, Push, **Sync** (commit → pull --rebase --autostash → push), file checkboxes, Back up to GitHub |
 | Packages | require / update / install |
 | Commands | cache / stache / glide / custom please\|artisan |

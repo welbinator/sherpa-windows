@@ -124,81 +124,101 @@
 
               <!-- Single fill host so every tab gets height + scroll -->
               <Panel>
-              <!-- OVERVIEW -->
-              <ScrollViewer IsVisible="{Binding IsDetailOverview}" Padding="28,8,28,48">
-                <StackPanel Spacing="16" MaxWidth="880" HorizontalAlignment="Center">
-                  <!-- Live browser preview (WebView2) -->
-                  <Border Classes="card" Padding="14">
-                    <StackPanel Spacing="10">
-                      <Border Classes="preview-frame" MinHeight="320" Height="380">
-                        <Panel>
-                          <!-- Real rendered page -->
-                          <wv:WebView x:Name="SitePreviewWebView"
-                                      HorizontalAlignment="Stretch"
-                                      VerticalAlignment="Stretch" />
-                          <!-- Fallback / status overlay when no URL yet -->
-                          <Border IsVisible="{Binding PreviewUrl, Converter={x:Static StringConverters.IsNullOrEmpty}}"
-                                  Background="#FFFFFF"
-                                  IsHitTestVisible="False">
-                            <TextBlock Text="{Binding SitePreviewBody}"
-                                       FontFamily="Cascadia Mono, Consolas, monospace"
-                                       FontSize="12"
-                                       TextWrapping="Wrap"
-                                       Foreground="#1C1C1E"
-                                       Margin="16"
-                                       VerticalAlignment="Center"
-                                       HorizontalAlignment="Center"
-                                       TextAlignment="Center" />
-                          </Border>
-                        </Panel>
-                      </Border>
-                      <Grid ColumnDefinitions="*,Auto">
-                        <TextBlock Text="{Binding SitePreviewUrlLine}" Classes="muted" VerticalAlignment="Center"
-                                   TextTrimming="CharacterEllipsis" />
-                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
-                          <TextBlock Text="{Binding SitePreviewBadge}" Classes="dim" VerticalAlignment="Center" />
-                          <Button Classes="ghost" Content="Refresh preview"
-                                  Command="{Binding RefreshPreviewCommand}" />
-                        </StackPanel>
-                      </Grid>
-                    </StackPanel>
-                  </Border>
+              <!-- OVERVIEW
+                   WebView2 is a native HWND host — it goes blank inside ScrollViewer /
+                   ClipToBounds. Keep the browser in a non-scrolling docked region. -->
+              <DockPanel IsVisible="{Binding IsDetailOverview}" Margin="28,8,28,0">
+                <!-- Live browser preview (WebView2) — fixed height, not in a scroller -->
+                <Border DockPanel.Dock="Top" Classes="card" Padding="14" Margin="0,0,0,16"
+                        MaxWidth="880" HorizontalAlignment="Center" Width="880">
+                  <StackPanel Spacing="10">
+                    <!-- ClipToBounds MUST stay false on the HWND host ancestor -->
+                    <Border Classes="preview-frame" MinHeight="320" Height="380" ClipToBounds="False">
+                      <Panel Background="#FFFFFF">
+                        <wv:WebView x:Name="SitePreviewWebView"
+                                    HorizontalAlignment="Stretch"
+                                    VerticalAlignment="Stretch"
+                                    Background="White" />
+                        <!-- Fallback / status overlay when no URL yet or engine error text -->
+                        <Border IsVisible="{Binding SitePreviewIsError}"
+                                Background="#FFF8F8"
+                                IsHitTestVisible="False">
+                          <TextBlock Text="{Binding SitePreviewBody}"
+                                     FontFamily="Cascadia Mono, Consolas, monospace"
+                                     FontSize="12"
+                                     TextWrapping="Wrap"
+                                     Foreground="#1C1C1E"
+                                     Margin="16"
+                                     VerticalAlignment="Center"
+                                     HorizontalAlignment="Center"
+                                     TextAlignment="Center" />
+                        </Border>
+                        <Border IsVisible="{Binding PreviewUrl, Converter={x:Static StringConverters.IsNullOrEmpty}}"
+                                Background="#FFFFFF"
+                                IsHitTestVisible="False">
+                          <TextBlock Text="{Binding SitePreviewBody}"
+                                     FontFamily="Cascadia Mono, Consolas, monospace"
+                                     FontSize="12"
+                                     TextWrapping="Wrap"
+                                     Foreground="#1C1C1E"
+                                     Margin="16"
+                                     VerticalAlignment="Center"
+                                     HorizontalAlignment="Center"
+                                     TextAlignment="Center" />
+                        </Border>
+                      </Panel>
+                    </Border>
+                    <Grid ColumnDefinitions="*,Auto">
+                      <TextBlock Text="{Binding SitePreviewUrlLine}" Classes="muted" VerticalAlignment="Center"
+                                 TextTrimming="CharacterEllipsis" />
+                      <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                        <TextBlock Text="{Binding SitePreviewBadge}" Classes="dim" VerticalAlignment="Center" />
+                        <Button Classes="ghost" Content="Refresh preview"
+                                Command="{Binding RefreshPreviewCommand}" />
+                      </StackPanel>
+                    </Grid>
+                  </StackPanel>
+                </Border>
 
-                  <!-- Installing -->
-                  <Border IsVisible="{Binding IsInstallingSite}" Classes="card">
-                    <StackPanel Spacing="10">
-                      <Grid ColumnDefinitions="*,Auto">
-                        <TextBlock Text="Installing" FontWeight="SemiBold" FontSize="15" />
-                        <TextBlock Grid.Column="1" Classes="muted" Text="{Binding InstallPhaseLabel}" />
-                      </Grid>
-                      <Grid ColumnDefinitions="Auto,*">
-                        <TextBlock Text="Status" Classes="muted" VerticalAlignment="Center" Margin="0,0,12,0" />
-                        <ProgressBar Grid.Column="1" Minimum="0" Maximum="100" Value="{Binding InstallProgress}"
-                                     IsIndeterminate="{Binding InstallProgressIndeterminate}" VerticalAlignment="Center" />
-                      </Grid>
-                      <TextBlock Text="{Binding InstallStatus}" Classes="muted" TextWrapping="Wrap" />
-                      <Button Classes="ghost" Content="Show / hide details" HorizontalAlignment="Left"
-                              Command="{Binding ToggleInstallDetailsCommand}" />
-                      <TextBox IsVisible="{Binding ShowInstallDetails}" Classes="log" Text="{Binding LogText}" MinHeight="140" />
-                    </StackPanel>
-                  </Border>
+                <!-- Everything under the preview can scroll freely -->
+                <ScrollViewer Padding="0,0,0,48" HorizontalScrollBarVisibility="Disabled">
+                  <StackPanel Spacing="16" MaxWidth="880" HorizontalAlignment="Center">
+                    <!-- Installing -->
+                    <Border IsVisible="{Binding IsInstallingSite}" Classes="card">
+                      <StackPanel Spacing="10">
+                        <Grid ColumnDefinitions="*,Auto">
+                          <TextBlock Text="Installing" FontWeight="SemiBold" FontSize="15" />
+                          <TextBlock Grid.Column="1" Classes="muted" Text="{Binding InstallPhaseLabel}" />
+                        </Grid>
+                        <Grid ColumnDefinitions="Auto,*">
+                          <TextBlock Text="Status" Classes="muted" VerticalAlignment="Center" Margin="0,0,12,0" />
+                          <ProgressBar Grid.Column="1" Minimum="0" Maximum="100" Value="{Binding InstallProgress}"
+                                       IsIndeterminate="{Binding InstallProgressIndeterminate}" VerticalAlignment="Center" />
+                        </Grid>
+                        <TextBlock Text="{Binding InstallStatus}" Classes="muted" TextWrapping="Wrap" />
+                        <Button Classes="ghost" Content="Show / hide details" HorizontalAlignment="Left"
+                                Command="{Binding ToggleInstallDetailsCommand}" />
+                        <TextBox IsVisible="{Binding ShowInstallDetails}" Classes="log" Text="{Binding LogText}" MinHeight="140" />
+                      </StackPanel>
+                    </Border>
 
-                  <!-- Statamic Utilities only (actions live in the top icon bar) -->
-                  <Border Classes="card">
-                    <StackPanel Spacing="10">
-                      <TextBlock Text="Statamic Utilities" FontWeight="SemiBold" />
-                      <TextBlock Classes="muted" TextWrapping="Wrap"
-                                 Text="Clear Cache flushes Laravel caches. Clear Stache rebuilds Statamic's content index. Clear Glide Cache deletes generated image transforms." />
-                      <WrapPanel>
-                        <Button Margin="0,0,8,8" Content="Clear Cache" Command="{Binding ClearCacheCommand}" />
-                        <Button Margin="0,0,8,8" Content="Clear Stache" Command="{Binding ClearStacheCommand}" />
-                        <Button Margin="0,0,8,8" Content="Warm Stache" Command="{Binding WarmStacheCommand}" />
-                        <Button Margin="0,0,8,8" Content="Clear Glide Cache" Command="{Binding ClearGlideCommand}" />
-                      </WrapPanel>
-                    </StackPanel>
-                  </Border>
-                </StackPanel>
-              </ScrollViewer>
+                    <!-- Statamic Utilities only (actions live in the top icon bar) -->
+                    <Border Classes="card">
+                      <StackPanel Spacing="10">
+                        <TextBlock Text="Statamic Utilities" FontWeight="SemiBold" />
+                        <TextBlock Classes="muted" TextWrapping="Wrap"
+                                   Text="Clear Cache flushes Laravel caches. Clear Stache rebuilds Statamic's content index. Clear Glide Cache deletes generated image transforms." />
+                        <WrapPanel>
+                          <Button Margin="0,0,8,8" Content="Clear Cache" Command="{Binding ClearCacheCommand}" />
+                          <Button Margin="0,0,8,8" Content="Clear Stache" Command="{Binding ClearStacheCommand}" />
+                          <Button Margin="0,0,8,8" Content="Warm Stache" Command="{Binding WarmStacheCommand}" />
+                          <Button Margin="0,0,8,8" Content="Clear Glide Cache" Command="{Binding ClearGlideCommand}" />
+                        </WrapPanel>
+                      </StackPanel>
+                    </Border>
+                  </StackPanel>
+                </ScrollViewer>
+              </DockPanel>
 
               <!-- PACKAGES -->
               <DockPanel IsVisible="{Binding IsDetailPackages}" Margin="28,8,28,0">
