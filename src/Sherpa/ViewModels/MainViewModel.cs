@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Text;
 using System.Text.Json;
 using Avalonia;
+using Avalonia.Threading;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Platform.Storage;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -53,6 +54,13 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty] private string logText = "";
     [ObservableProperty] private bool isBusy;
     [ObservableProperty] private string busyLabel = "";
+    [ObservableProperty] private bool isInstallingSite;
+    [ObservableProperty] private string installStatus = "";
+    [ObservableProperty] private double installProgress; // 0-100, 0 = indeterminate-ish
+    [ObservableProperty] private bool installProgressIndeterminate;
+    [ObservableProperty] private string sitePreviewTitle = "Site preview";
+    [ObservableProperty] private string sitePreviewSubtitle = "Create or select a site to see a preview.";
+    [ObservableProperty] private string sitePreviewBadge = "";
     [ObservableProperty] private string statusLine = "Sherpa for Windows · 0.2.0";
     [ObservableProperty] private string runtimeStatus = "";
     [ObservableProperty] private string gitBranchLine = "";
@@ -149,7 +157,9 @@ public partial class MainViewModel : ViewModelBase
         if (value?.Deployments != null)
             foreach (var d in value.Deployments.OrderByDescending(x => x.At))
                 Deployments.Add(d);
-        _ = RefreshSitePanelsAsync();
+        UpdatePreviewForSite(value, IsInstallingSite && value is not null);
+        if (!IsInstallingSite)
+            _ = RefreshSitePanelsAsync();
     }
 
     partial void OnNewSiteNameChanged(string value) => RefreshNewSitePreviews();
@@ -371,10 +381,68 @@ public partial class MainViewModel : ViewModelBase
 
     private void RefreshRuntimeStatus() => RuntimeStatus = _svc.Runtime.StatusSummary();
 
+    private void Ui(Action action)
+    {
+        if (Dispatcher.UIThread.CheckAccess()) action();
+        else Dispatcher.UIThread.Post(action);
+    }
+
     private void AppendLog(string line)
     {
-        if (string.IsNullOrEmpty(LogText)) LogText = line;
-        else LogText += "\n" + line;
+        Ui(() =>
+        {
+            if (string.IsNullOrEmpty(LogText)) LogText = line;
+            else LogText += "\n" + line;
+            if (IsInstallingSite || IsBusy)
+            {
+                // Keep status bar + install banner in sync with latest step
+                var shortLine = line.Length > 120 ? line.Substring(0, 117) + "…" : line;
+                if (!string.IsNullOrWhiteSpace(line) && !line.StartsWith('•'))
+                {
+                    InstallStatus = shortLine;
+                    BusyLabel = shortLine;
+                    StatusLine = shortLine;
+                    BumpInstallProgress(line);
+                }
+            }
+        });
+    }
+
+    private void BumpInstallProgress(string line)
+    {
+        var l = line.ToLowerInvariant();
+        void Set(double p, bool ind = false) { InstallProgress = p; InstallProgressIndeterminate = ind; }
+        if (l.Contains("creating statamic") || l.Contains("create-project")) Set(12);
+        else if (l.Contains("starter kit")) Set(35);
+        else if (l.Contains("sqlite") || l.Contains("mysql") || l.Contains("flat files") || l.Contains("eloquent")) Set(50);
+        else if (l.Contains("static site") || l.Contains("ssg")) Set(62);
+        else if (l.Contains("super user") || l.Contains("make:user")) Set(72);
+        else if (l.Contains("initialize git") || l.Contains("git")) Set(80);
+        else if (l.Contains("herd") || l.Contains("park") || l.Contains("secure")) Set(90);
+        else if (l.Contains("created project") || l.Contains("site ready")) Set(100);
+        else if (InstallProgress < 8) Set(8, true);
+    }
+
+    private void UpdatePreviewForSite(Site? site, bool installing)
+    {
+        if (site is null)
+        {
+            SitePreviewTitle = "Site preview";
+            SitePreviewSubtitle = "Create or select a site to see a preview.";
+            SitePreviewBadge = "";
+            return;
+        }
+        SitePreviewTitle = site.Name;
+        if (installing)
+        {
+            SitePreviewSubtitle = site.Url ?? "Installing…";
+            SitePreviewBadge = "Installing";
+        }
+        else
+        {
+            SitePreviewSubtitle = site.Url ?? site.Path;
+            SitePreviewBadge = site.Kind.ToString();
+        }
     }
 
     private void ClearLog()
@@ -393,21 +461,31 @@ public partial class MainViewModel : ViewModelBase
     private async Task RunJobAsync(string label, Func<CancellationToken, Task> work)
     {
         if (IsBusy) return;
-        IsBusy = true;
-        BusyLabel = label;
+        Ui(() =>
+        {
+            IsBusy = true;
+            BusyLabel = label;
+            StatusLine = label;
+        });
         ClearLog();
         AppendLog(label + "…");
         try { await work(CancellationToken.None); }
         catch (Exception ex)
         {
             AppendLog(ex.Message);
-            ShowAdviceFrom(ex.Message);
-            StatusLine = "Something needed your attention.";
+            Ui(() =>
+            {
+                ShowAdviceFrom(ex.Message);
+                StatusLine = "Something needed your attention.";
+            });
         }
         finally
         {
-            IsBusy = false;
-            BusyLabel = "";
+            Ui(() =>
+            {
+                IsBusy = false;
+                if (!IsInstallingSite) BusyLabel = "";
+            });
         }
     }
 
@@ -665,32 +743,127 @@ public partial class MainViewModel : ViewModelBase
             SecureHttps = NewSiteSecureHttps,
         };
 
-        ShowNewSiteWizard = false;
-        await RunJobAsync("New Site", async ct =>
+        // Mac behavior: dismiss wizard immediately, show Overview + live install status
+        var expectedPath = _svc.Herd.WillCreatePath(folder, req.SiteName);
+        var pending = new Site
         {
-            var (site, result, error) = await _svc.Install.CreateAsync(req, AppendLog, ct);
+            Name = req.SiteName,
+            Path = expectedPath,
+            Url = _svc.Herd.UrlPreview(req.SiteName, req.SecureHttps),
+            Https = req.SecureHttps,
+            Kind = SiteKind.Statamic,
+            StartingPoint = string.IsNullOrWhiteSpace(req.StarterKitPackage) ? "blank" : "kit:" + req.StarterKitPackage,
+        };
 
-            if (result is not null && !result.Success)
-            {
-                AppendLog(result.Combined);
-                ShowAdviceFrom(result.Combined);
-            }
-            if (error is not null)
-            {
-                AppendLog(error);
-                ShowAdviceFrom(error + "\n" + (result?.Combined ?? ""));
-                ShowNewSiteWizard = true;
-                return;
-            }
-            if (site is null) return;
+        ShowNewSiteWizard = false;
+        SelectedNavIndex = 0;
+        SelectedDetailTab = 0;
+        Sites.Insert(0, pending);
+        SelectedSite = pending;
+        UpdatePreviewForSite(pending, installing: true);
 
-            Sites.Add(site);
-            PersistSites();
-            SelectedSite = site;
-            _svc.Notifications.Notify("Site ready", $"{site.Name} is ready to open.");
-            StatusLine = $"Created {site.Name}.";
-            await RefreshSitePanelsAsync();
+        await RunJobAsync("Installing " + req.SiteName, async ct =>
+        {
+            try
+            {
+                Ui(() =>
+                {
+                    IsInstallingSite = true;
+                    InstallProgressIndeterminate = true;
+                    InstallProgress = 5;
+                    InstallStatus = "Starting install…";
+                });
+
+                var (site, result, error) = await _svc.Install.CreateAsync(req, AppendLog, ct);
+
+                if (result is not null && !result.Success)
+                {
+                    AppendLog(result.Combined);
+                    Ui(() => ShowAdviceFrom(result.Combined));
+                }
+                if (error is not null)
+                {
+                    AppendLog(error);
+                    Ui(() =>
+                    {
+                        ShowAdviceFrom(error + "\n" + (result?.Combined ?? ""));
+                        InstallStatus = error;
+                        // Keep pending site if folder exists so user can inspect; else remove
+                        if (!Directory.Exists(pending.Path))
+                        {
+                            Sites.Remove(pending);
+                            if (SelectedSite == pending) SelectedSite = Sites.FirstOrDefault();
+                        }
+                        PersistSites();
+                    });
+                    return;
+                }
+                if (site is null) return;
+
+                Ui(() =>
+                {
+                    // Replace pending with final site data (same list slot)
+                    var idx = Sites.IndexOf(pending);
+                    if (idx >= 0)
+                    {
+                        site.Id = pending.Id;
+                        Sites[idx] = site;
+                        SelectedSite = site;
+                    }
+                    else
+                    {
+                        Sites.Insert(0, site);
+                        SelectedSite = site;
+                    }
+                    PersistSites();
+                    InstallProgress = 100;
+                    InstallProgressIndeterminate = false;
+                    InstallStatus = "Created project";
+                    UpdatePreviewForSite(site, installing: false);
+                    StatusLine = $"Created {site.Name}.";
+                });
+                _svc.Notifications.Notify("Site ready", $"{site.Name} is ready to open.");
+                await RefreshSitePanelsAsync();
+                await RefreshPreviewHttpAsync(site);
+            }
+            finally
+            {
+                Ui(() =>
+                {
+                    IsInstallingSite = false;
+                    InstallProgressIndeterminate = false;
+                    if (SelectedSite is not null)
+                        UpdatePreviewForSite(SelectedSite, installing: false);
+                    if (InstallStatus == "Starting install…") InstallStatus = "";
+                    BusyLabel = "";
+                });
+            }
         });
+    }
+
+    private async Task RefreshPreviewHttpAsync(Site site)
+    {
+        if (string.IsNullOrWhiteSpace(site.Url)) return;
+        try
+        {
+            // Ensure Herd before probing local .test URL
+            await _svc.Herd.EnsureRunningAsync(AppendLog);
+            using var http = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(4) };
+            using var res = await http.GetAsync(site.Url);
+            Ui(() =>
+            {
+                SitePreviewBadge = $"{(int)res.StatusCode}";
+                SitePreviewSubtitle = $"{site.Url} · HTTP {(int)res.StatusCode}";
+            });
+        }
+        catch
+        {
+            Ui(() =>
+            {
+                SitePreviewBadge = "Local";
+                SitePreviewSubtitle = site.Url + " · open when Herd is ready";
+            });
+        }
     }
 
     [RelayCommand]
@@ -746,6 +919,13 @@ public partial class MainViewModel : ViewModelBase
     private async Task OpenSiteUrlAsync()
     {
         if (SelectedSite?.Url is null) return;
+        StatusLine = "Checking Herd…";
+        var (ok, msg) = await _svc.Herd.EnsureRunningAsync(AppendLog);
+        if (!ok)
+        {
+            StatusLine = msg;
+            return;
+        }
         try
         {
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
@@ -753,9 +933,9 @@ public partial class MainViewModel : ViewModelBase
                 FileName = SelectedSite.Url,
                 UseShellExecute = true,
             });
+            StatusLine = "Opened " + SelectedSite.Url;
         }
         catch (Exception ex) { StatusLine = ex.Message; }
-        await Task.CompletedTask;
     }
 
     [RelayCommand]

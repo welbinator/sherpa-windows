@@ -60,7 +60,11 @@
               <TextBlock Foreground="#9AA3B2" FontSize="13" Text="{Binding StatusLine}" TextWrapping="Wrap" />
             </StackPanel>
             <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-              <TextBlock Text="{Binding BusyLabel}" Foreground="#9AA3B2" VerticalAlignment="Center" IsVisible="{Binding IsBusy}" />
+              <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding IsBusy}">
+                <ProgressBar Width="120" Height="6" IsIndeterminate="{Binding InstallProgressIndeterminate}"
+                             Value="{Binding InstallProgress}" Minimum="0" Maximum="100" VerticalAlignment="Center" />
+                <TextBlock Text="{Binding BusyLabel}" Foreground="#9AA3B2" VerticalAlignment="Center" MaxWidth="280" TextTrimming="CharacterEllipsis" />
+              </StackPanel>
               <Button Content="Copy errors" Command="{Binding CopyErrorsCommand}" />
             </StackPanel>
           </Grid>
@@ -87,6 +91,38 @@
                 <TabItem Header="Overview">
                   <ScrollViewer Padding="4,12">
                     <StackPanel Spacing="12" MaxWidth="760">
+                      <!-- Install status (Mac: bar on overview while creating) -->
+                      <Border IsVisible="{Binding IsInstallingSite}" Background="#1A2332" CornerRadius="10" Padding="14"
+                              BorderBrush="#3B82F6" BorderThickness="1">
+                        <StackPanel Spacing="8">
+                          <TextBlock Text="Installing site…" FontWeight="SemiBold" />
+                          <TextBlock Text="{Binding InstallStatus}" Foreground="#9AA3B2" TextWrapping="Wrap" />
+                          <ProgressBar Height="8" Minimum="0" Maximum="100" Value="{Binding InstallProgress}"
+                                       IsIndeterminate="{Binding InstallProgressIndeterminate}" />
+                        </StackPanel>
+                      </Border>
+
+                      <!-- Site preview card -->
+                      <Border Background="#161A22" CornerRadius="10" Padding="0" BorderBrush="#2A3140" BorderThickness="1" ClipToBounds="True">
+                        <Grid RowDefinitions="140,Auto">
+                          <Border Grid.Row="0" Background="#0B1220">
+                            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="6">
+                              <TextBlock Text="{Binding SitePreviewBadge}" Foreground="#60A5FA" FontSize="12" HorizontalAlignment="Center" />
+                              <TextBlock Text="{Binding SitePreviewTitle}" FontSize="28" FontWeight="Bold" HorizontalAlignment="Center" />
+                              <TextBlock Text="{Binding SitePreviewSubtitle}" Foreground="#9AA3B2" FontSize="13" HorizontalAlignment="Center" TextWrapping="Wrap" MaxWidth="480" TextAlignment="Center" />
+                            </StackPanel>
+                          </Border>
+                          <Border Grid.Row="1" Padding="14">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                              <Button Content="Open site" Command="{Binding OpenSiteUrlCommand}" />
+                              <Button Content="Open folder" Command="{Binding OpenSiteFolderCommand}" />
+                              <TextBlock Text="{Binding InstallStatus}" Foreground="#9AA3B2" VerticalAlignment="Center"
+                                         IsVisible="{Binding IsInstallingSite}" />
+                            </StackPanel>
+                          </Border>
+                        </Grid>
+                      </Border>
+
                       <Border Background="#161A22" CornerRadius="10" Padding="14" BorderBrush="#2A3140" BorderThickness="1">
                         <StackPanel Spacing="8">
                           <TextBlock Text="Path" FontWeight="SemiBold" />
@@ -364,8 +400,17 @@
     </Grid>
 
     <Border Grid.Row="1" Background="#0F1218" BorderBrush="#1E2430" BorderThickness="0,1,0,0" Padding="12,8">
-      <TextBlock Foreground="#9AA3B2" FontSize="12"
-                 Text="Sherpa for Windows · 0.2.2 (build 4) · Tokens stay in the Windows secret store" />
+      <Grid ColumnDefinitions="*,Auto">
+        <StackPanel Orientation="Horizontal" Spacing="10">
+          <ProgressBar Width="100" Height="5" VerticalAlignment="Center"
+                       IsVisible="{Binding IsBusy}"
+                       IsIndeterminate="{Binding InstallProgressIndeterminate}"
+                       Value="{Binding InstallProgress}" Minimum="0" Maximum="100" />
+          <TextBlock Foreground="#9AA3B2" FontSize="12" Text="{Binding StatusLine}" TextTrimming="CharacterEllipsis" />
+        </StackPanel>
+        <TextBlock Grid.Column="1" Foreground="#6B7280" FontSize="11"
+                   Text="Sherpa · Tokens stay in the Windows secret store" VerticalAlignment="Center" />
+      </Grid>
     </Border>
 
     <!-- Toast -->
