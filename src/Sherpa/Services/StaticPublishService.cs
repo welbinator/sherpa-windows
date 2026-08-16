@@ -247,8 +247,16 @@ public sealed class StaticPublishService
             return Fail("Wrangler failed (" + deploy.ExitCode + "). " + detail.Trim());
         }
 
-        var url = ExtractUrl(deploy.StdOut + "\n" + deploy.StdErr)
-                  ?? project.ProductionUrl;
+        // Prefer the stable production host (my-site.pages.dev), not Wrangler's
+        // per-deploy preview (abc123.my-site.pages.dev) which changes every publish.
+        var deployPreview = ExtractUrl(deploy.StdOut + "\n" + deploy.StdErr);
+        var url = PreferStablePagesUrl(publicBaseUrl, project.ProductionUrl, deployPreview);
+
+        if (!string.IsNullOrWhiteSpace(deployPreview)
+            && !string.Equals(deployPreview.TrimEnd('/'), url.TrimEnd('/'), StringComparison.OrdinalIgnoreCase))
+        {
+            onLine?.Invoke("Deploy preview: " + deployPreview.TrimEnd('/'));
+        }
 
         onLine?.Invoke("Published to " + url);
         return new StaticPublishResult
@@ -767,18 +775,75 @@ public sealed class StaticPublishService
         return null;
     }
 
+    /// <summary>
+    /// Stable production URL is <c>https://project.pages.dev</c>.
+    /// Wrangler prints a deployment-specific preview like
+    /// <c>https://80bd083d.project.pages.dev</c> — useful once, not as the site domain.
+    /// </summary>
+    internal static string PreferStablePagesUrl(params string?[] candidates)
+    {
+        string? stable = null;
+        string? any = null;
+
+        foreach (var raw in candidates)
+        {
+            if (string.IsNullOrWhiteSpace(raw)) continue;
+            var url = raw.Trim().TrimEnd('/');
+            // strip path/query
+            try
+            {
+                if (Uri.TryCreate(url, UriKind.Absolute, out var uri))
+                    url = uri.GetLeftPart(UriPartial.Authority);
+            }
+            catch
+            {
+                // keep trimmed
+            }
+
+            any ??= url;
+
+            // Deployment previews look like: https://<hex>.<name>.pages.dev
+            // Stable production: https://<name>.pages.dev  (exactly one label before pages.dev)
+            if (IsStablePagesProductionUrl(url))
+            {
+                stable = url;
+                break;
+            }
+        }
+
+        return stable ?? any ?? "https://pages.dev";
+    }
+
+    internal static bool IsStablePagesProductionUrl(string url)
+    {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri)) return false;
+        var host = uri.Host;
+        if (!host.EndsWith(".pages.dev", StringComparison.OrdinalIgnoreCase)) return false;
+        // name.pages.dev → 2 labels before TLD split carefully:
+        // "new-site-7jx.pages.dev" → parts = [new-site-7jx, pages, dev] length 3
+        // "80bd083d.new-site-7jx.pages.dev" → 4 parts
+        var parts = host.Split('.', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length == 3
+               && parts[^2].Equals("pages", StringComparison.OrdinalIgnoreCase)
+               && parts[^1].Equals("dev", StringComparison.OrdinalIgnoreCase);
+    }
+
     private static string? ExtractUrl(string text)
     {
         if (string.IsNullOrWhiteSpace(text)) return null;
-        // https://xxx.pages.dev or deployment-specific *.pages.dev
-        var m = Regex.Match(text, @"https://[a-zA-Z0-9.-]+\.pages\.dev[^\s]*");
-        if (m.Success)
+
+        // Collect all pages.dev URLs; prefer stable production over deploy previews.
+        var matches = Regex.Matches(text, @"https://[a-zA-Z0-9.-]+\.pages\.dev");
+        string? preview = null;
+        foreach (Match m in matches)
         {
             var url = m.Value.TrimEnd('.', ',', ')', ']');
-            return url;
+            if (IsStablePagesProductionUrl(url))
+                return url;
+            preview ??= url;
         }
 
-        return null;
+        return preview;
     }
 
     private static StaticPublishResult Fail(string message) => new()
