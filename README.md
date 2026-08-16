@@ -2,16 +2,30 @@
 
 **Jack-crafted** Windows clone of [Sherpa](https://shepherd.app) — local Statamic / Laravel site manager.
 
-Version **0.2.2** (build 4). Reverse-engineered from the Mac app binary and rebuilt to match its flows (not a pixel-perfect skin).
+Version **0.2.6**. Reverse-engineered from the Mac app binary and rebuilt to match its flows (not a pixel-perfect skin).
 
 ## Download
 
-1. Open **[Releases](https://github.com/welbinator/sherpa-windows/releases)**
+1. Open **[Releases](https://github.com/welbinator/sherpa-windows/releases/latest)**
 2. Download **`Sherpa-win-x64.zip`**
 3. Unzip anywhere (not inside your Herd folder)
 4. Run **`Sherpa.exe`**
 
 SmartScreen may warn on unsigned builds → *More info* → *Run anyway*.
+
+### Maintainers — shipping a version
+
+Pushing `main` is **not** enough. Users only see versions that are **GitHub Releases**:
+
+```bash
+# 1) publish self-contained exe
+dotnet publish src/Sherpa/Sherpa.csproj -c Release -r win-x64 --self-contained true -o publish/win-x64
+# 2) zip
+mkdir -p artifacts && (cd publish/win-x64 && zip -qr ../../artifacts/Sherpa-win-x64.zip Sherpa.exe)
+# 3) git tag + push, then create Release vX.Y.Z and upload artifacts/Sherpa-win-x64.zip
+```
+
+Or: `scripts/release.sh 0.2.7 "notes here"`
 
 ### On your PC
 - Windows 10/11 x64  
