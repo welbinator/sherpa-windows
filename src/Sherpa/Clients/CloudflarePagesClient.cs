@@ -31,12 +31,17 @@ public sealed class CloudflarePagesClient
         _http.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
     }
 
+    // Cloudflare Pages list endpoint rejects per_page outside a small range
+    // (Wrangler uses 10; 50 returns "Invalid list options… page or per_page").
+    private const int ProjectsPageSize = 10;
+
     public async Task<(bool ok, string message)> ValidateAsync(string token, string accountId, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(accountId))
             return (false, "Cloudflare account ID is required. Find it in the dashboard URL or account overview.");
 
-        using var req = new HttpRequestMessage(HttpMethod.Get, $"accounts/{accountId.Trim()}/pages/projects?per_page=1");
+        using var req = new HttpRequestMessage(HttpMethod.Get,
+            $"accounts/{accountId.Trim()}/pages/projects?page=1&per_page={ProjectsPageSize}");
         req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
         using var res = await _http.SendAsync(req, ct).ConfigureAwait(false);
         var body = await res.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
@@ -55,10 +60,10 @@ public sealed class CloudflarePagesClient
 
         var list = new List<CloudflarePagesProject>();
         var page = 1;
-        while (page <= 20)
+        while (page <= 50)
         {
             using var req = new HttpRequestMessage(HttpMethod.Get,
-                $"accounts/{accountId.Trim()}/pages/projects?per_page=50&page={page}");
+                $"accounts/{accountId.Trim()}/pages/projects?page={page}&per_page={ProjectsPageSize}");
             req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
             using var res = await _http.SendAsync(req, ct).ConfigureAwait(false);
             var body = await res.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
@@ -82,7 +87,7 @@ public sealed class CloudflarePagesClient
                     list.Add(new CloudflarePagesProject { Name = name, Subdomain = subdomain, Id = id });
                 }
 
-                if (batch < 50) break;
+                if (batch < ProjectsPageSize) break;
                 page++;
             }
             catch (Exception ex)
@@ -94,6 +99,38 @@ public sealed class CloudflarePagesClient
         return (true, $"Found {list.Count} Pages project(s).", list);
     }
 
+    public async Task<(bool ok, string message, CloudflarePagesProject? project)> GetProjectAsync(
+        string token, string accountId, string projectName, CancellationToken ct = default)
+    {
+        var name = SanitizeProjectName(projectName);
+        if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(accountId))
+            return (false, "Project name and account ID are required.", null);
+
+        using var req = new HttpRequestMessage(HttpMethod.Get,
+            $"accounts/{accountId.Trim()}/pages/projects/{Uri.EscapeDataString(name)}");
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        using var res = await _http.SendAsync(req, ct).ConfigureAwait(false);
+        var body = await res.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+        if (res.StatusCode == System.Net.HttpStatusCode.NotFound)
+            return (false, "not found", null);
+        if (!res.IsSuccessStatusCode)
+            return (false, ParseError(body, "Could not load Pages project."), null);
+
+        try
+        {
+            using var doc = JsonDocument.Parse(body);
+            var result = doc.RootElement.GetProperty("result");
+            var n = result.TryGetProperty("name", out var nameEl) ? nameEl.GetString() ?? name : name;
+            var subdomain = result.TryGetProperty("subdomain", out var s) ? s.GetString() : n;
+            var id = result.TryGetProperty("id", out var i) ? i.GetString() : null;
+            return (true, "ok", new CloudflarePagesProject { Name = n, Subdomain = subdomain, Id = id });
+        }
+        catch (Exception ex)
+        {
+            return (false, "Could not parse Pages project: " + ex.Message, null);
+        }
+    }
+
     public async Task<(bool ok, string message, CloudflarePagesProject? project)> EnsureProjectAsync(
         string token, string accountId, string projectName, CancellationToken ct = default)
     {
@@ -101,14 +138,10 @@ public sealed class CloudflarePagesClient
         if (string.IsNullOrWhiteSpace(name))
             return (false, "Project name is empty after cleanup. Use letters, numbers, and hyphens.", null);
 
-        var (listOk, listMsg, projects) = await ListProjectsAsync(token, accountId, ct).ConfigureAwait(false);
-        if (!listOk)
-            return (false, listMsg, null);
-
-        var existing = projects.FirstOrDefault(p =>
-            string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase));
-        if (existing is not null)
-            return (true, $"Using existing Pages project “{existing.Name}”.", existing);
+        // Prefer direct GET by name (no pagination quirks) before listing/creating.
+        var existing = await GetProjectAsync(token, accountId, name, ct).ConfigureAwait(false);
+        if (existing.ok && existing.project is not null)
+            return (true, $"Using existing Pages project “{existing.project.Name}”.", existing.project);
 
         // Create project (Direct Upload / production branch main — matches Mac Sherpa)
         var payload = JsonSerializer.Serialize(new
@@ -127,15 +160,14 @@ public sealed class CloudflarePagesClient
 
         if (!res.IsSuccessStatusCode)
         {
-            // Race: created elsewhere
+            // Race: created elsewhere — fetch by name again
             if (body.Contains("already exists", StringComparison.OrdinalIgnoreCase)
-                || body.Contains("9004", StringComparison.Ordinal))
+                || body.Contains("9004", StringComparison.Ordinal)
+                || body.Contains("8000004", StringComparison.Ordinal))
             {
-                var again = await ListProjectsAsync(token, accountId, ct).ConfigureAwait(false);
-                var hit = again.projects.FirstOrDefault(p =>
-                    string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase));
-                if (hit is not null)
-                    return (true, $"Using existing Pages project “{hit.Name}”.", hit);
+                var again = await GetProjectAsync(token, accountId, name, ct).ConfigureAwait(false);
+                if (again.ok && again.project is not null)
+                    return (true, $"Using existing Pages project “{again.project.Name}”.", again.project);
             }
 
             return (false, ParseError(body, "Could not create Pages project."), null);
