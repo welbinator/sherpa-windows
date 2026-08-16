@@ -18,21 +18,27 @@ public partial class App : Application
     {
         base.RegisterServices();
 
-        // Free WebView.Avalonia stack (WebView2 on Windows) — not Avalonia Accelerate.
-        // UserDataFolder MUST be a writable, stable path. Single-file / Program Files
-        // defaults leave WebView2 with a black empty surface and no useful error.
-        var userData = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "Sherpa",
-            "WebView2");
-        Directory.CreateDirectory(userData);
-
-        AvaloniaWebViewBuilder.Initialize(props =>
+        // Preview stack is best-effort. If WebView2 bits are blocked/missing, Sherpa
+        // must still open so the user can manage sites.
+        try
         {
-            props.UserDataFolder = userData;
-            props.AreDevToolEnabled = true;
-            props.DefaultWebViewBackgroundColor = Color.White;
-        });
+            var userData = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "Sherpa",
+                "WebView2");
+            Directory.CreateDirectory(userData);
+
+            AvaloniaWebViewBuilder.Initialize(props =>
+            {
+                props.UserDataFolder = userData;
+                props.AreDevToolEnabled = true;
+                props.DefaultWebViewBackgroundColor = Color.White;
+            });
+        }
+        catch (Exception ex)
+        {
+            CrashLog.Write("AvaloniaWebViewBuilder.Initialize", ex, showDialog: false);
+        }
     }
 
     public override void OnFrameworkInitializationCompleted()

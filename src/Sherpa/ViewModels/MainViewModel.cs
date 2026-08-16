@@ -79,7 +79,7 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty] private string previewUrl = "";
     /// <summary>Bumped to force the WebView to reload even when the URL is unchanged.</summary>
     [ObservableProperty] private int previewReloadToken;
-    [ObservableProperty] private string statusLine = "Sherpa for Windows · 0.2.11";
+    [ObservableProperty] private string statusLine = "Sherpa for Windows · 0.2.12";
     [ObservableProperty] private string runtimeStatus = "";
     [ObservableProperty] private string gitBranchLine = "";
     [ObservableProperty] private string gitLogText = "";

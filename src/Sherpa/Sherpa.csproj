@@ -9,10 +9,10 @@
     <ApplicationIcon>Assets/sherpa.ico</ApplicationIcon>
     <RootNamespace>Sherpa</RootNamespace>
     <AssemblyName>Sherpa</AssemblyName>
-    <Version>0.2.11</Version>
-    <AssemblyVersion>0.2.11.13</AssemblyVersion>
-    <FileVersion>0.2.11.13</FileVersion>
-    <InformationalVersion>0.2.11+build.13</InformationalVersion>
+    <Version>0.2.12</Version>
+    <AssemblyVersion>0.2.12.14</AssemblyVersion>
+    <FileVersion>0.2.12.14</FileVersion>
+    <InformationalVersion>0.2.12+build.14</InformationalVersion>
     <Product>Sherpa</Product>
     <Company>Sherpa</Company>
     <Authors>welbinator</Authors>
@@ -23,6 +23,8 @@
     <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>true</SelfContained>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
   </PropertyGroup>
 
