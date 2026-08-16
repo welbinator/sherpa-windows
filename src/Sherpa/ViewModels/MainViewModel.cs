@@ -56,8 +56,12 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty] private string busyLabel = "";
     [ObservableProperty] private bool isInstallingSite;
     [ObservableProperty] private string installStatus = "";
-    [ObservableProperty] private double installProgress; // 0-100, 0 = indeterminate-ish
+    [ObservableProperty] private double installProgress; // 0-100
     [ObservableProperty] private bool installProgressIndeterminate;
+    // Current install phase band — progress crawls inside [floor, ceil) on composer noise
+    private double _installPhaseFloor;
+    private double _installPhaseCeil = 100;
+    private int _installPhaseNoise;
     [ObservableProperty] private string sitePreviewTitle = "Site preview";
     [ObservableProperty] private string sitePreviewSubtitle = "Create or select a site to see a preview.";
     [ObservableProperty] private string sitePreviewBadge = "";
@@ -393,34 +397,133 @@ public partial class MainViewModel : ViewModelBase
         {
             if (string.IsNullOrEmpty(LogText)) LogText = line;
             else LogText += "\n" + line;
-            if (IsInstallingSite || IsBusy)
+
+            if (string.IsNullOrWhiteSpace(line) || line.StartsWith('•'))
+                return;
+
+            var shortLine = line.Length > 140 ? line.Substring(0, 137) + "…" : line;
+
+            if (IsInstallingSite)
             {
-                // Keep status bar + install banner in sync with latest step
-                var shortLine = line.Length > 120 ? line.Substring(0, 117) + "…" : line;
-                if (!string.IsNullOrWhiteSpace(line) && !line.StartsWith('•'))
-                {
-                    InstallStatus = shortLine;
-                    BusyLabel = shortLine;
-                    StatusLine = shortLine;
-                    BumpInstallProgress(line);
-                }
+                // Single surface: Overview install card only (no header/footer echo)
+                InstallStatus = shortLine;
+                AdvanceInstallProgress(line);
+                return;
+            }
+
+            if (IsBusy)
+            {
+                BusyLabel = shortLine;
+                StatusLine = shortLine;
             }
         });
     }
 
-    private void BumpInstallProgress(string line)
+    /// <summary>
+    /// Step-based progress. Major coordinator messages open a phase band;
+    /// composer/process noise only crawls inside that band (never jumps to 90% on "github").
+    /// </summary>
+    private void AdvanceInstallProgress(string line)
     {
-        var l = line.ToLowerInvariant();
-        void Set(double p, bool ind = false) { InstallProgress = p; InstallProgressIndeterminate = ind; }
-        if (l.Contains("creating statamic") || l.Contains("create-project")) Set(12);
-        else if (l.Contains("starter kit")) Set(35);
-        else if (l.Contains("sqlite") || l.Contains("mysql") || l.Contains("flat files") || l.Contains("eloquent")) Set(50);
-        else if (l.Contains("static site") || l.Contains("ssg")) Set(62);
-        else if (l.Contains("super user") || l.Contains("make:user")) Set(72);
-        else if (l.Contains("initialize git") || l.Contains("git")) Set(80);
-        else if (l.Contains("herd") || l.Contains("park") || l.Contains("secure")) Set(90);
-        else if (l.Contains("created project") || l.Contains("site ready")) Set(100);
-        else if (InstallProgress < 8) Set(8, true);
+        var lower = line.Trim().ToLowerInvariant();
+
+        // High-level steps from InstallCoordinator (and clear Herd messages)
+        if (lower.StartsWith("creating statamic") || lower.Contains("create-project"))
+        {
+            EnterInstallPhase(8, 58);
+            return;
+        }
+        if (lower.StartsWith("installing starter kit"))
+        {
+            EnterInstallPhase(58, 70);
+            return;
+        }
+        if (lower.StartsWith("blank site"))
+        {
+            SnapInstallProgress(60);
+            EnterInstallPhase(60, 68);
+            return;
+        }
+        if (lower.StartsWith("configuring sqlite")
+            || lower.StartsWith("configuring mysql")
+            || lower.StartsWith("content storage"))
+        {
+            EnterInstallPhase(68, 76);
+            return;
+        }
+        if (lower.StartsWith("running install:eloquent"))
+        {
+            SnapInstallProgress(Math.Max(InstallProgress, 72));
+            return;
+        }
+        if (lower.StartsWith("installing static site")
+            || lower.StartsWith("please install:ssg")
+            || lower.Contains("composer require statamic/ssg"))
+        {
+            EnterInstallPhase(76, 83);
+            return;
+        }
+        if (lower.StartsWith("creating super user"))
+        {
+            EnterInstallPhase(83, 89);
+            return;
+        }
+        if (lower.StartsWith("initialize git"))
+        {
+            EnterInstallPhase(89, 93);
+            return;
+        }
+        // Herd — avoid bare "secure"/"park"/"git" which match composer noise / github URLs
+        if (lower.Contains("herd")
+            || lower.StartsWith("linked ")
+            || lower.StartsWith("parked ")
+            || lower.StartsWith("securing ")
+            || lower.Contains("ssl certificate"))
+        {
+            EnterInstallPhase(93, 99);
+            return;
+        }
+        if (lower.StartsWith("created project") || lower.Contains("site ready"))
+        {
+            SnapInstallProgress(100);
+            _installPhaseFloor = 100;
+            _installPhaseCeil = 100;
+            return;
+        }
+
+        // Within the open phase: asymptotic crawl so long composer runs fill the bar honestly
+        if (_installPhaseCeil > _installPhaseFloor + 0.5 && InstallProgress < _installPhaseCeil - 0.4)
+        {
+            _installPhaseNoise++;
+            var span = _installPhaseCeil - _installPhaseFloor;
+            // ~half the band by ~35 lines, ~90% by ~120 lines — create-project is chatty
+            var t = 1.0 - Math.Exp(-_installPhaseNoise / 45.0);
+            var target = _installPhaseFloor + span * t;
+            if (target > InstallProgress)
+            {
+                InstallProgress = Math.Min(_installPhaseCeil - 0.35, target);
+                InstallProgressIndeterminate = false;
+            }
+        }
+    }
+
+    private void EnterInstallPhase(double floor, double ceil)
+    {
+        _installPhaseFloor = floor;
+        _installPhaseCeil = ceil;
+        _installPhaseNoise = 0;
+        if (InstallProgress < floor)
+            InstallProgress = floor;
+        // Don't jump backward if a late message re-enters an earlier-ish band
+        if (InstallProgress > ceil - 0.5)
+            InstallProgress = Math.Max(floor, ceil - 1);
+        InstallProgressIndeterminate = false;
+    }
+
+    private void SnapInstallProgress(double value)
+    {
+        InstallProgress = Math.Clamp(value, 0, 100);
+        InstallProgressIndeterminate = false;
     }
 
     private void UpdatePreviewForSite(Site? site, bool installing)
@@ -769,9 +872,13 @@ public partial class MainViewModel : ViewModelBase
                 Ui(() =>
                 {
                     IsInstallingSite = true;
-                    InstallProgressIndeterminate = true;
-                    InstallProgress = 5;
+                    InstallProgressIndeterminate = false;
+                    InstallProgress = 4;
+                    _installPhaseFloor = 4;
+                    _installPhaseCeil = 58;
+                    _installPhaseNoise = 0;
                     InstallStatus = "Starting install…";
+                    // Keep header/footer quiet; don't echo install into StatusLine
                 });
 
                 var (site, result, error) = await _svc.Install.CreateAsync(req, AppendLog, ct);
