@@ -113,7 +113,7 @@ public sealed class StaticPublishService
         if (php is null)
             return Fail("PHP not found. Install Laravel Herd (or set PHP under Settings) before generating static files.");
 
-        var npx = FindNpx();
+        var npx = _runtime.FindNpx() ?? FindNpx();
         if (npx is null)
             return Fail("Node/npx is required to publish to Cloudflare Pages. Install Node.js from nodejs.org (or enable Node in Herd), then try again.");
 
@@ -356,11 +356,25 @@ public sealed class StaticPublishService
         _ = accountId; // reserved for future account_id field if wrangler schema wants it
     }
 
+    /// <summary>Fallback locator when <see cref="RuntimeManager.FindNpx"/> is null.</summary>
     private string? FindNpx()
     {
-        return Which("npx") ?? Which("npx.cmd")
-               ?? (_runtime.FindNpm() is { } npm
-                   ? Path.Combine(Path.GetDirectoryName(npm) ?? "", OperatingSystem.IsWindows() ? "npx.cmd" : "npx")
+        // Windows: never pick the extensionless Node shim (not a PE binary).
+        if (OperatingSystem.IsWindows())
+        {
+            var cmd = Which("npx.cmd");
+            if (cmd is not null) return cmd;
+            if (_runtime.FindNpm() is { } npm)
+            {
+                var sibling = Path.Combine(Path.GetDirectoryName(npm) ?? "", "npx.cmd");
+                if (File.Exists(sibling)) return sibling;
+            }
+            return null;
+        }
+
+        return Which("npx")
+               ?? (_runtime.FindNpm() is { } npmUnix
+                   ? Path.Combine(Path.GetDirectoryName(npmUnix) ?? "", "npx")
                    : null);
     }
 
@@ -372,13 +386,19 @@ public sealed class StaticPublishService
             foreach (var dir in path.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
             {
                 var candidate = Path.Combine(dir.Trim('"'), name);
-                if (File.Exists(candidate)) return candidate;
-                if (OperatingSystem.IsWindows() && !name.EndsWith(".cmd", StringComparison.OrdinalIgnoreCase)
-                    && !name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+                if (OperatingSystem.IsWindows()
+                    && !name.EndsWith(".cmd", StringComparison.OrdinalIgnoreCase)
+                    && !name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
+                    && !name.EndsWith(".bat", StringComparison.OrdinalIgnoreCase))
                 {
                     if (File.Exists(candidate + ".cmd")) return candidate + ".cmd";
                     if (File.Exists(candidate + ".exe")) return candidate + ".exe";
+                    if (File.Exists(candidate + ".bat")) return candidate + ".bat";
+                    // Skip extensionless non-PE shims on Windows.
+                    continue;
                 }
+
+                if (File.Exists(candidate)) return candidate;
             }
         }
         catch

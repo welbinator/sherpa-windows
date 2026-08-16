@@ -42,7 +42,19 @@ public sealed class RuntimeManager
         return Which("git") ?? Which("git.exe");
     }
 
-    public string? FindNpm() => Which("npm") ?? Which("npm.cmd");
+    /// <summary>
+    /// Windows Node installs ship a non-PE <c>npm</c> shim next to <c>npm.cmd</c>.
+    /// Prefer .cmd so Process.Start (UseShellExecute=false) can launch it.
+    /// </summary>
+    public string? FindNpm() =>
+        OperatingSystem.IsWindows()
+            ? Which("npm.cmd") ?? Which("npm")
+            : Which("npm");
+
+    public string? FindNpx() =>
+        OperatingSystem.IsWindows()
+            ? Which("npx.cmd") ?? Which("npx")
+            : Which("npx");
 
     public string? FindHerd()
     {
@@ -54,7 +66,9 @@ public sealed class RuntimeManager
                      Path.Combine(home, ".config", "herd", "bin", "herd.bat"),
                  })
             if (File.Exists(c)) return c;
-        return Which("herd") ?? Which("herd.bat");
+        return OperatingSystem.IsWindows()
+            ? Which("herd.bat") ?? Which("herd.cmd") ?? Which("herd")
+            : Which("herd");
     }
 
     public string StatusSummary()
@@ -127,17 +141,52 @@ public sealed class RuntimeManager
     private static string? Which(string name)
     {
         var path = Environment.GetEnvironmentVariable("PATH") ?? "";
-        var exts = (Environment.GetEnvironmentVariable("PATHEXT") ?? ".EXE;.CMD;.BAT").Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var exts = (Environment.GetEnvironmentVariable("PATHEXT") ?? ".EXE;.CMD;.BAT")
+            .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var nameHasExt = name.Contains('.', StringComparison.Ordinal);
         foreach (var dir in path.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
         {
             var full = Path.Combine(dir.Trim('"'), name);
-            if (File.Exists(full)) return full;
-            foreach (var ext in exts)
+
+            // On Windows, prefer PATHEXT matches (.cmd/.exe) before extensionless files.
+            // Node ships a Unix shell script named "npm"/"npx" that is not a PE binary —
+            // Process.Start then fails with "not a valid application for this OS platform".
+            if (OperatingSystem.IsWindows() && !nameHasExt)
             {
-                var with = full.EndsWith(ext, StringComparison.OrdinalIgnoreCase) ? full : full + ext;
-                if (File.Exists(with)) return with;
+                foreach (var ext in exts)
+                {
+                    var with = full + ext;
+                    if (File.Exists(with)) return with;
+                }
+
+                // Only accept extensionless if it looks like a real Windows PE (MZ header).
+                if (File.Exists(full) && LooksLikeWindowsPe(full)) return full;
+                continue;
+            }
+
+            if (File.Exists(full)) return full;
+            if (!nameHasExt)
+            {
+                foreach (var ext in exts)
+                {
+                    var with = full + ext;
+                    if (File.Exists(with)) return with;
+                }
             }
         }
         return null;
+    }
+
+    private static bool LooksLikeWindowsPe(string path)
+    {
+        try
+        {
+            using var fs = File.OpenRead(path);
+            return fs.ReadByte() == 'M' && fs.ReadByte() == 'Z';
+        }
+        catch
+        {
+            return false;
+        }
     }
 }

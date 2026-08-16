@@ -84,7 +84,7 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty] private string previewUrl = "";
     /// <summary>Bumped to force the WebView to reload even when the URL is unchanged.</summary>
     [ObservableProperty] private int previewReloadToken;
-    [ObservableProperty] private string statusLine = "Sherpa for Windows · 0.3.6";
+    [ObservableProperty] private string statusLine = "Sherpa for Windows · 0.3.7";
     [ObservableProperty] private string runtimeStatus = "";
     /// <summary>Monochrome Path.Data for the open-in-browser toolbar icon (Chrome / Firefox / Edge / generic).</summary>
     [ObservableProperty] private string browserIconPathData = DefaultBrowserDetector.IconPathData(DefaultBrowserKind.Generic);
@@ -2229,7 +2229,7 @@ public partial class MainViewModel : ViewModelBase
         AppendLog(php is null ? "PHP: not found" : "PHP: " + php);
         var npm = _svc.Runtime.FindNpm();
         AppendLog(npm is null ? "npm: not found (needed for front-end build + Wrangler)" : "npm: " + npm);
-        var npx = WhichNpx();
+        var npx = _svc.Runtime.FindNpx() ?? WhichNpx();
         AppendLog(npx is null
             ? "npx: not found — install Node.js to publish to Cloudflare Pages"
             : "npx: " + npx);
