@@ -11,10 +11,40 @@ public sealed class CloudflarePagesProject
     public string? Subdomain { get; init; }
     public string? Id { get; init; }
 
-    public string ProductionUrl =>
-        !string.IsNullOrWhiteSpace(Subdomain)
-            ? $"https://{Subdomain}.pages.dev"
-            : $"https://{Name}.pages.dev";
+    /// <summary>
+    /// Canonical production host URL. Cloudflare's API often returns
+    /// <c>subdomain</c> already as <c>name.pages.dev</c> — never append twice.
+    /// </summary>
+    public string ProductionUrl => "https://" + NormalizePagesHost(Subdomain, Name);
+
+    /// <summary>e.g. <c>my-site.pages.dev</c> (no scheme).</summary>
+    public static string NormalizePagesHost(string? subdomain, string? name)
+    {
+        var host = !string.IsNullOrWhiteSpace(subdomain) ? subdomain.Trim() : (name ?? "").Trim();
+        if (host.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            host = host["https://".Length..];
+        else if (host.StartsWith("http://", StringComparison.OrdinalIgnoreCase))
+            host = host["http://".Length..];
+
+        host = host.Trim().TrimEnd('/');
+        // Strip accidental path
+        var slash = host.IndexOf('/');
+        if (slash >= 0) host = host[..slash];
+
+        if (string.IsNullOrWhiteSpace(host))
+            host = "example";
+
+        // Already a full pages.dev host (API often returns this)
+        if (host.EndsWith(".pages.dev", StringComparison.OrdinalIgnoreCase))
+        {
+            // Collapse name.pages.dev.pages.dev if somehow doubled
+            while (host.EndsWith(".pages.dev.pages.dev", StringComparison.OrdinalIgnoreCase))
+                host = host[..^".pages.dev".Length];
+            return host;
+        }
+
+        return host + ".pages.dev";
+    }
 }
 
 public sealed class CloudflarePagesClient

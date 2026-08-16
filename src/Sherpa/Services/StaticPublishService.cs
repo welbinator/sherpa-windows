@@ -133,9 +133,11 @@ public sealed class StaticPublishService
         if (!projOk || project is null)
             return Fail(projMsg);
 
-        // Public URL for this deploy — MUST be used when generating so CSS/JS don't
-        // point at the local Herd *.test host (Chrome then prompts “access other apps…”).
-        var publicBaseUrl = (project.ProductionUrl ?? $"https://{project.Name}.pages.dev").TrimEnd('/');
+        // Public URL for this deploy. Prefer root-relative asset URLs in HTML so a
+        // wrong APP_URL can never break CSS on other devices.
+        var publicBaseUrl = (project.ProductionUrl ?? $"https://{CloudflarePagesProject.NormalizePagesHost(null, project.Name)}").TrimEnd('/');
+        // Guard against any legacy double-suffix still floating around
+        publicBaseUrl = publicBaseUrl.Replace(".pages.dev.pages.dev", ".pages.dev", StringComparison.OrdinalIgnoreCase);
 
         // Always rebuild for Cloudflare publish. Reusing a prior SSG that baked
         // https://site.test into @vite tags is the #1 cause of “works on my PC only”.
@@ -155,21 +157,33 @@ public sealed class StaticPublishService
         // Ensure Vite build assets are inside the static folder (SSG usually copies them).
         EnsurePublicBuildCopied(site.Path, staticDir, onLine);
 
-        // Safety net: rewrite any leftover local absolute URLs → root-relative
-        // so browsers never try to load CSS from https://something.test
-        var rewritten = RewriteLocalAbsoluteUrls(staticDir, localOrigins, publicBase: null);
-        onLine?.Invoke(rewritten > 0
-            ? $"Rewrote local URLs in {rewritten} file(s) so assets load from the public site."
-            : "Checked static files for local .test URLs.");
+        // Safety net: rewrite absolute URLs → root-relative so CSS/JS always load
+        // from the same host as the page (works on every device + custom domains).
+        // 1) local Herd *.test  2) whatever public base we generated with  3) doubled pages.dev
+        var originsToStrip = new List<string>(localOrigins)
+        {
+            publicBaseUrl,
+            publicBaseUrl.Replace("https://", "http://", StringComparison.OrdinalIgnoreCase),
+        };
+        // Also strip any accidental *.pages.dev.pages.dev
+        if (publicBaseUrl.Contains(".pages.dev", StringComparison.OrdinalIgnoreCase))
+        {
+            originsToStrip.Add(publicBaseUrl.Replace(".pages.dev", ".pages.dev.pages.dev", StringComparison.OrdinalIgnoreCase));
+        }
 
-        // Hard gate — never upload HTML that still points at Herd/local.
-        var leftover = FindLocalUrlSamples(staticDir, max: 5);
+        var rewritten = RewriteLocalAbsoluteUrls(staticDir, originsToStrip, publicBase: null);
+        onLine?.Invoke(rewritten > 0
+            ? $"Rewrote absolute asset URLs in {rewritten} file(s) to root-relative paths."
+            : "Checked static files for absolute local/public asset URLs.");
+
+        // Hard gate — never upload HTML that still points at Herd/local or broken hosts.
+        var leftover = FindBrokenAssetUrlSamples(staticDir, max: 5);
         if (leftover.Count > 0)
         {
             return Fail(
-                "Refusing to publish: static HTML still references your local site (" +
+                "Refusing to publish: static HTML still has bad asset URLs (" +
                 string.Join(", ", leftover) +
-                "). CSS would only work on this PC. Try Publish again; if it keeps happening, tell Hermes.");
+                "). CSS would break off this PC. Try Publish again; if it keeps happening, tell Hermes.");
         }
 
         // Confirm /build exists in what we upload
@@ -202,9 +216,10 @@ public sealed class StaticPublishService
         {
             ["CLOUDFLARE_API_TOKEN"] = token,
             ["CLOUDFLARE_ACCOUNT_ID"] = accountId,
-            // Avoid interactive wrangler prompts
+            // Avoid interactive wrangler prompts + noisy git HEAD errors on non-git folders
             ["CI"] = "1",
             ["WRANGLER_SEND_METRICS"] = "false",
+            ["GIT_DIR"] = null, // don't let wrangler poke parent git oddly
         };
 
         // npx --yes wrangler@3 pages deploy <dir> --project-name=X --branch=main --commit-dirty=true
@@ -220,6 +235,8 @@ public sealed class StaticPublishService
             "--branch",
             "main",
             "--commit-dirty=true",
+            "--commit-message",
+            "Sherpa publish",
         };
 
         var deploy = await _runner.RunAsync(npx, args, site.Path, env, onLine, ct).ConfigureAwait(false);
@@ -525,6 +542,24 @@ public sealed class StaticPublishService
                 replacement,
                 RegexOptions.IgnoreCase);
 
+            // Collapse doubled pages.dev hosts → root-relative (drop the whole origin)
+            text = Regex.Replace(
+                text,
+                @"https?://[a-z0-9.-]+\.pages\.dev\.pages\.dev",
+                replacement,
+                RegexOptions.IgnoreCase);
+
+            // Any absolute https://*.pages.dev origin → root-relative so custom domains work too
+            // Only strip when used as asset origin (followed by /build or /css etc. is fine for all paths)
+            if (replacement == "")
+            {
+                text = Regex.Replace(
+                    text,
+                    @"https?://[a-z0-9.-]+\.pages\.dev(?=/)",
+                    "",
+                    RegexOptions.IgnoreCase);
+            }
+
             if (!string.Equals(original, text, StringComparison.Ordinal))
             {
                 try
@@ -566,8 +601,8 @@ public sealed class StaticPublishService
         }
     }
 
-    /// <summary>Return sample leftover local absolute URLs still present in static HTML.</summary>
-    internal static List<string> FindLocalUrlSamples(string staticDir, int max = 5)
+    /// <summary>Return sample leftover bad absolute asset URLs still present in static HTML.</summary>
+    internal static List<string> FindBrokenAssetUrlSamples(string staticDir, int max = 5)
     {
         var found = new List<string>();
         if (!Directory.Exists(staticDir)) return found;
@@ -579,14 +614,19 @@ public sealed class StaticPublishService
                 try { text = File.ReadAllText(file); }
                 catch { continue; }
 
-                foreach (System.Text.RegularExpressions.Match m in
-                         Regex.Matches(text, @"https?://[a-z0-9.-]+\.test\b[^""'\s>]*", RegexOptions.IgnoreCase))
-                {
-                    var sample = m.Value;
-                    if (found.Any(f => f.Equals(sample, StringComparison.OrdinalIgnoreCase))) continue;
-                    found.Add(sample);
-                    if (found.Count >= max) return found;
-                }
+                // Local Herd
+                foreach (Match m in Regex.Matches(text, @"https?://[a-z0-9.-]+\.test\b[^""'\s>]*", RegexOptions.IgnoreCase))
+                    Add(m.Value);
+
+                // Doubled pages.dev
+                foreach (Match m in Regex.Matches(text, @"https?://[a-z0-9.-]+\.pages\.dev\.pages\.dev[^""'\s>]*", RegexOptions.IgnoreCase))
+                    Add(m.Value);
+
+                // Absolute vite/build assets (should be root-relative after rewrite)
+                foreach (Match m in Regex.Matches(text, @"https?://[^""'\s>]+/build/assets/[^""'\s>]+", RegexOptions.IgnoreCase))
+                    Add(m.Value);
+
+                if (found.Count >= max) return found;
             }
         }
         catch
@@ -595,7 +635,17 @@ public sealed class StaticPublishService
         }
 
         return found;
+
+        void Add(string sample)
+        {
+            if (found.Any(f => f.Equals(sample, StringComparison.OrdinalIgnoreCase))) return;
+            found.Add(sample);
+        }
     }
+
+    /// <summary>Legacy name kept for any callers.</summary>
+    internal static List<string> FindLocalUrlSamples(string staticDir, int max = 5) =>
+        FindBrokenAssetUrlSamples(staticDir, max);
 
     private static void CopyDirectory(string source, string dest)
     {
