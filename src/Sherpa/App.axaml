@@ -262,15 +262,15 @@
       <Setter Property="Background" Value="#152238" />
     </Style>
 
-    <!-- Icon toolbar buttons (Mac-style chrome) -->
+    <!-- Icon toolbar buttons (Mac-style monochrome outline glyphs, not emoji) -->
     <Style Selector="Button.icon">
       <Setter Property="Background" Value="Transparent" />
-      <Setter Property="Foreground" Value="#C7C7CC" />
+      <Setter Property="Foreground" Value="#D1D1D6" />
       <Setter Property="BorderThickness" Value="0" />
       <Setter Property="CornerRadius" Value="8" />
-      <Setter Property="Padding" Value="8,6" />
-      <Setter Property="MinWidth" Value="36" />
-      <Setter Property="MinHeight" Value="32" />
+      <Setter Property="Padding" Value="9,7" />
+      <Setter Property="MinWidth" Value="34" />
+      <Setter Property="MinHeight" Value="30" />
       <Setter Property="FontSize" Value="15" />
       <Setter Property="FontWeight" Value="Normal" />
     </Style>
@@ -282,6 +282,25 @@
     </Style>
     <Style Selector="Button.icon:disabled">
       <Setter Property="Opacity" Value="0.35" />
+    </Style>
+    <!-- Stroke icons inherit the button foreground (hover stays monochrome) -->
+    <Style Selector="Button.icon Path.icon-glyph">
+      <Setter Property="Width" Value="15" />
+      <Setter Property="Height" Value="15" />
+      <Setter Property="Stretch" Value="Uniform" />
+      <Setter Property="Fill" Value="Transparent" />
+      <Setter Property="Stroke" Value="{Binding $parent[Button].Foreground}" />
+      <Setter Property="StrokeThickness" Value="1.5" />
+      <Setter Property="StrokeLineCap" Value="Round" />
+      <Setter Property="StrokeJoin" Value="Round" />
+    </Style>
+    <Style Selector="Border.icon-toolbar">
+      <Setter Property="Background" Value="#2C2C2E" />
+      <Setter Property="BorderBrush" Value="#3A3A3C" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="18" />
+      <Setter Property="Padding" Value="4,2" />
+      <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
 
     <!-- Centered pill tabs -->

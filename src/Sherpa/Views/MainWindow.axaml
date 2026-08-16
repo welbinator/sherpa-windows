@@ -66,17 +66,47 @@
                          IsVisible="{Binding !IsInstallingSite}" />
             </StackPanel>
 
-            <!-- Icon toolbar -->
-            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="2" VerticalAlignment="Center"
-                        IsVisible="{Binding SelectedSite, Converter={x:Static ObjectConverters.IsNotNull}}">
-              <Button Classes="icon" Content="🗑" ToolTip.Tip="Remove site" Command="{Binding ConfirmRemoveCommand}" />
-              <Button Classes="icon" Content="🌐" ToolTip.Tip="Open in browser" Command="{Binding OpenSiteUrlCommand}" />
-              <Button Classes="icon" Content="📁" ToolTip.Tip="Open folder" Command="{Binding OpenSiteFolderCommand}" />
-              <Button Classes="icon" Content="👤" ToolTip.Tip="Create user" Command="{Binding OpenCreateUserSheetCommand}" />
-              <Button Classes="icon" Content="⌘" ToolTip.Tip="Commands" Command="{Binding OpenCommandsSheetCommand}" />
-              <Button Classes="icon" Content="⚙" ToolTip.Tip="Site tools (Herd link / HTTPS)" Command="{Binding OpenSiteToolsCommand}" />
-              <Button Classes="icon" Content="⧉" ToolTip.Tip="Copy path" Command="{Binding CopySitePathCommand}" />
-            </StackPanel>
+            <!-- Icon toolbar — monochrome outline glyphs in a Mac-style capsule (SF Symbol energy) -->
+            <Border Grid.Column="1" Classes="icon-toolbar"
+                    IsVisible="{Binding SelectedSite, Converter={x:Static ObjectConverters.IsNotNull}}">
+              <StackPanel Orientation="Horizontal" Spacing="0">
+                <!-- 1 trash -->
+                <Button Classes="icon" ToolTip.Tip="Remove site" Command="{Binding ConfirmRemoveCommand}">
+                  <Path Classes="icon-glyph"
+                        Data="M3 6.5h18 M8.5 6.5V5a2 2 0 0 1 2-2h3a2 2 0 0 1 2 2v1.5 M19 6.5l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2l-1-14 M10 11v7 M14 11v7" />
+                </Button>
+                <!-- 2 open in browser — arrow.up.right.circle -->
+                <Button Classes="icon" ToolTip.Tip="Open in browser" Command="{Binding OpenSiteUrlCommand}">
+                  <Path Classes="icon-glyph"
+                        Data="M12 3.5 A8.5 8.5 0 1 0 12 20.5 A8.5 8.5 0 1 0 12 3.5 Z M10 14 L16 8 M11.5 8 H16 V12.5" />
+                </Button>
+                <!-- 3 commands — water.waves / terminal energy (Mac bar) -->
+                <Button Classes="icon" ToolTip.Tip="Commands" Command="{Binding OpenCommandsSheetCommand}">
+                  <Path Classes="icon-glyph"
+                        Data="M3.5 8 C5.5 5.5, 8.5 5.5, 10.5 8 S15.5 10.5, 17.5 8 M3.5 12.5 C5.5 10, 8.5 10, 10.5 12.5 S15.5 15, 17.5 12.5 M3.5 17 C5.5 14.5, 8.5 14.5, 10.5 17 S15.5 19.5, 17.5 17" />
+                </Button>
+                <!-- 4 folder — Show in Explorer -->
+                <Button Classes="icon" ToolTip.Tip="Open folder" Command="{Binding OpenSiteFolderCommand}">
+                  <Path Classes="icon-glyph"
+                        Data="M3.5 7.5 A1.5 1.5 0 0 1 5 6 h4.2 l1.8 2 H19 a1.5 1.5 0 0 1 1.5 1.5 v8 A1.5 1.5 0 0 1 19 19 H5 A1.5 1.5 0 0 1 3.5 17.5 Z" />
+                </Button>
+                <!-- 5 create user — Mac bar uses connected-nodes / share silhouette -->
+                <Button Classes="icon" ToolTip.Tip="Create user" Command="{Binding OpenCreateUserSheetCommand}">
+                  <Path Classes="icon-glyph"
+                        Data="M6.5 9.5 A2.2 2.2 0 1 0 6.5 5.1 A2.2 2.2 0 1 0 6.5 9.5 Z M17.5 9.5 A2.2 2.2 0 1 0 17.5 5.1 A2.2 2.2 0 1 0 17.5 9.5 Z M12 18.5 A2.2 2.2 0 1 0 12 14.1 A2.2 2.2 0 1 0 12 18.5 Z M8.2 8.2 L10.3 14.8 M15.8 8.2 L13.7 14.8" />
+                </Button>
+                <!-- 6 site tools — slider.horizontal.3 / vertical sliders -->
+                <Button Classes="icon" ToolTip.Tip="Site tools (Herd link / HTTPS)" Command="{Binding OpenSiteToolsCommand}">
+                  <Path Classes="icon-glyph"
+                        Data="M8 4.5 v15 M16 4.5 v15 M5.5 9.5 h5 M13.5 14.5 h5" />
+                </Button>
+                <!-- 7 copy path — Mac bar: rounded square with arrow.up.right -->
+                <Button Classes="icon" ToolTip.Tip="Copy path" Command="{Binding CopySitePathCommand}">
+                  <Path Classes="icon-glyph"
+                        Data="M8 5.5 H6.5 A2 2 0 0 0 4.5 7.5 v10 A2 2 0 0 0 6.5 19.5 h10 a2 2 0 0 0 2 -2 V16 M13 4.5 h6.5 V11 M19.5 4.5 L11 13" />
+                </Button>
+              </StackPanel>
+            </Border>
 
             <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" Margin="12,0,0,0">
               <Button Classes="ghost" Content="Copy errors" Command="{Binding CopyErrorsCommand}" />
