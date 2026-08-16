@@ -10,11 +10,9 @@ internal static class Program
     [STAThread]
     public static void Main(string[] args)
     {
-        // Single-file publish extracts native DLLs (incl. WebView2Loader.dll) under
-        // AppContext.BaseDirectory (a temp folder). WebView2's loader lookup starts next
-        // to the .exe path, so without help it never finds the DLL → black preview.
+        // WebView2 Core+Loader are published beside the exe (excluded from the
+        // single-file bundle). Make sure that directory is on PATH early.
         EnsureWebView2LoaderDiscoverable();
-
         BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
     }
 
@@ -29,50 +27,43 @@ internal static class Program
     {
         try
         {
-            var extractDir = AppContext.BaseDirectory.TrimEnd(
-                Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-            var loaderName = "WebView2Loader.dll";
-            var extracted = Path.Combine(extractDir, loaderName);
+            var dirs = new System.Collections.Generic.List<string>();
 
-            // Always prefer a stable, writable copy under LocalAppData.
+            var exeDir = Path.GetDirectoryName(Environment.ProcessPath);
+            if (!string.IsNullOrWhiteSpace(exeDir))
+                dirs.Add(exeDir);
+
+            var baseDir = AppContext.BaseDirectory.TrimEnd(
+                Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            if (!string.IsNullOrWhiteSpace(baseDir))
+                dirs.Add(baseDir);
+
             var stableDir = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "Sherpa",
                 "native");
             Directory.CreateDirectory(stableDir);
-            var stableLoader = Path.Combine(stableDir, loaderName);
+            dirs.Add(stableDir);
 
-            if (File.Exists(extracted))
+            // If loader sits next to the exe, also keep a stable copy under LocalAppData.
+            foreach (var dir in dirs)
             {
-                var needsCopy = !File.Exists(stableLoader)
-                    || new FileInfo(extracted).Length != new FileInfo(stableLoader).Length;
-                if (needsCopy)
-                    File.Copy(extracted, stableLoader, overwrite: true);
+                var src = Path.Combine(dir, "WebView2Loader.dll");
+                if (!File.Exists(src)) continue;
+                var dest = Path.Combine(stableDir, "WebView2Loader.dll");
+                try
+                {
+                    if (!File.Exists(dest) || new FileInfo(src).Length != new FileInfo(dest).Length)
+                        File.Copy(src, dest, overwrite: true);
+                }
+                catch { /* ignore */ }
+                break;
             }
 
-            // Prepend extract dir + stable dir to PATH so LoadLibrary finds the loader
-            // even when the real Sherpa.exe lives somewhere else (Desktop, Downloads, etc.).
             var path = Environment.GetEnvironmentVariable("PATH") ?? "";
-            var prefix = extractDir + Path.PathSeparator + stableDir + Path.PathSeparator;
+            var prefix = string.Join(Path.PathSeparator, dirs) + Path.PathSeparator;
             if (!path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
                 Environment.SetEnvironmentVariable("PATH", prefix + path);
-
-            // Best-effort: also drop a copy next to the exe when the folder is writable
-            // (Desktop / Downloads). Harmless if it fails (Program Files, etc.).
-            var exePath = Environment.ProcessPath;
-            if (!string.IsNullOrWhiteSpace(exePath) && File.Exists(stableLoader))
-            {
-                var exeDir = Path.GetDirectoryName(exePath);
-                if (!string.IsNullOrWhiteSpace(exeDir))
-                {
-                    var besideExe = Path.Combine(exeDir, loaderName);
-                    if (!File.Exists(besideExe))
-                    {
-                        try { File.Copy(stableLoader, besideExe, overwrite: false); }
-                        catch { /* not writable — PATH fallback is enough */ }
-                    }
-                }
-            }
         }
         catch
         {

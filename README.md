@@ -2,14 +2,14 @@
 
 **Jack-crafted** Windows clone of [Sherpa](https://shepherd.app) — local Statamic / Laravel site manager.
 
-Version **0.2.10**. Reverse-engineered from the Mac app binary and rebuilt to match its flows (not a pixel-perfect skin).
+Version **0.2.11**. Reverse-engineered from the Mac app binary and rebuilt to match its flows (not a pixel-perfect skin).
 
 ## Download
 
 1. Open **[Releases](https://github.com/welbinator/sherpa-windows/releases/latest)**
 2. Download **`Sherpa-win-x64.zip`**
 3. Unzip anywhere (not inside your Herd folder)
-4. Run **`Sherpa.exe`**
+4. Run **`Sherpa.exe`** (leave the 2 small WebView2 `.dll` files next to it — needed for site preview)
 
 SmartScreen may warn on unsigned builds → *More info* → *Run anyway*.
 
@@ -18,10 +18,10 @@ SmartScreen may warn on unsigned builds → *More info* → *Run anyway*.
 Pushing `main` is **not** enough. Users only see versions that are **GitHub Releases**:
 
 ```bash
-scripts/release.sh 0.2.10 "notes here"
+scripts/release.sh 0.2.11 "notes here"
 ```
 
-That publishes a **single-file** self-contained `Sherpa.exe`, zips only that exe, and uploads the Release asset.
+Ships a minimal zip: `Sherpa.exe` + `WebView2Loader.dll` + `Microsoft.Web.WebView2.Core.dll` (WebView2 cannot live fully inside a single-file bundle).
 
 ### On your PC
 - Windows 10/11 x64  

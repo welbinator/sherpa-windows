@@ -1,14 +1,18 @@
 #!/usr/bin/env bash
 # Create a GitHub Release for Sherpa Windows and upload the zip.
-# Usage: scripts/release.sh 0.2.10 "Optional release notes markdown"
-# Ship shape: ONE self-contained Sherpa.exe inside Sherpa-win-x64.zip
+# Usage: scripts/release.sh 0.2.11 "Optional release notes markdown"
+#
+# Zip contents (minimal):
+#   Sherpa.exe
+#   Microsoft.Web.WebView2.Core.dll   # must sit beside exe (single-file breaks it)
+#   WebView2Loader.dll
 set -euo pipefail
 
 VERSION="${1:-}"
 NOTES="${2:-}"
 if [[ -z "$VERSION" ]]; then
   echo "Usage: $0 <version> [notes]" >&2
-  echo "  e.g. $0 0.2.10 'Bug fixes'" >&2
+  echo "  e.g. $0 0.2.11 'Bug fixes'" >&2
   exit 1
 fi
 VERSION="${VERSION#v}"
@@ -35,7 +39,7 @@ echo "==> Clean publish dir"
 rm -rf publish/win-x64
 mkdir -p publish/win-x64
 
-echo "==> Publish win-x64 single-file self-contained"
+echo "==> Publish win-x64 (single-file app + external WebView2 bits)"
 dotnet publish src/Sherpa/Sherpa.csproj -c Release -r win-x64 --self-contained true -o publish/win-x64 \
   -p:PublishSingleFile=true \
   -p:IncludeNativeLibrariesForSelfExtract=true
@@ -45,10 +49,43 @@ if [[ ! -f publish/win-x64/Sherpa.exe ]]; then
   exit 1
 fi
 
-echo "==> Zip ONLY Sherpa.exe (single application file)"
+# Guarantee loader is present even if the ExcludeFromSingleFile target missed it
+if [[ ! -f publish/win-x64/WebView2Loader.dll ]]; then
+  LOADER="$(find "${HOME}/.nuget/packages/webview.avalonia.windows" -path '*win-x64*WebView2Loader.dll' | head -n1 || true)"
+  if [[ -n "$LOADER" ]]; then
+    echo "==> Copying WebView2Loader.dll from $LOADER"
+    cp -f "$LOADER" publish/win-x64/WebView2Loader.dll
+  fi
+fi
+
+if [[ ! -f publish/win-x64/Microsoft.Web.WebView2.Core.dll ]]; then
+  CORE="$(find "${HOME}/.nuget/packages/webview.avalonia.windows" -name 'Microsoft.Web.WebView2.Core.dll' | head -n1 || true)"
+  if [[ -n "$CORE" ]]; then
+    echo "==> Copying Microsoft.Web.WebView2.Core.dll from $CORE"
+    cp -f "$CORE" publish/win-x64/Microsoft.Web.WebView2.Core.dll
+  fi
+fi
+
+echo "==> Publish folder (top):"
+ls -lh publish/win-x64/Sherpa.exe \
+  publish/win-x64/WebView2Loader.dll \
+  publish/win-x64/Microsoft.Web.WebView2.Core.dll 2>&1 || true
+
+echo "==> Zip minimal runtime (exe + WebView2 companions only)"
 mkdir -p artifacts
 rm -f artifacts/Sherpa-win-x64.zip
-(cd publish/win-x64 && zip -qr ../../artifacts/Sherpa-win-x64.zip Sherpa.exe)
+STAGE=$(mktemp -d)
+cp -f publish/win-x64/Sherpa.exe "$STAGE/"
+cp -f publish/win-x64/WebView2Loader.dll "$STAGE/" 2>/dev/null || true
+cp -f publish/win-x64/Microsoft.Web.WebView2.Core.dll "$STAGE/" 2>/dev/null || true
+# Fail loud if WebView2 bits missing — preview will be broken otherwise
+if [[ ! -f "$STAGE/WebView2Loader.dll" || ! -f "$STAGE/Microsoft.Web.WebView2.Core.dll" ]]; then
+  echo "ERROR: WebView2 companion DLLs missing from stage — refusing to ship a broken preview build" >&2
+  ls -la "$STAGE" >&2 || true
+  exit 1
+fi
+(cd "$STAGE" && zip -qr "$ROOT/artifacts/Sherpa-win-x64.zip" .)
+rm -rf "$STAGE"
 ZIP="$ROOT/artifacts/Sherpa-win-x64.zip"
 ls -lh "$ZIP"
 unzip -l "$ZIP"
@@ -56,7 +93,9 @@ unzip -l "$ZIP"
 if [[ -z "$NOTES" ]]; then
   NOTES="Sherpa for Windows ${VERSION}
 
-Download **Sherpa-win-x64.zip**, unzip, run **Sherpa.exe**."
+Download **Sherpa-win-x64.zip**, unzip, run **Sherpa.exe**.
+
+Keep the 2 small WebView2 DLL files next to Sherpa.exe (needed for the site preview)."
 fi
 
 echo "==> Create release ${TAG}"

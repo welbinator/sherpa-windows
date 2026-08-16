@@ -9,16 +9,17 @@
     <ApplicationIcon>Assets/sherpa.ico</ApplicationIcon>
     <RootNamespace>Sherpa</RootNamespace>
     <AssemblyName>Sherpa</AssemblyName>
-    <Version>0.2.10</Version>
-    <AssemblyVersion>0.2.10.12</AssemblyVersion>
-    <FileVersion>0.2.10.12</FileVersion>
-    <InformationalVersion>0.2.10+build.12</InformationalVersion>
+    <Version>0.2.11</Version>
+    <AssemblyVersion>0.2.11.13</AssemblyVersion>
+    <FileVersion>0.2.11.13</FileVersion>
+    <InformationalVersion>0.2.11+build.13</InformationalVersion>
     <Product>Sherpa</Product>
     <Company>Sherpa</Company>
     <Authors>welbinator</Authors>
     <Description>Windows port of Sherpa — local Statamic/Laravel site manager (Jack-crafted DX).</Description>
-    <!-- Single-file zip+.exe (user preference). Natives self-extract; Program.cs
-         makes WebView2Loader.dll discoverable so preview still works. -->
+    <!-- Mostly-single-file: app is one exe, but WebView2 Core+Loader MUST sit beside it.
+         Their SDK does Path.Combine(Assembly.Location, …) which is null inside a
+         true single-file bundle → black preview / ArgumentNullException path1. -->
     <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>true</SelfContained>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
@@ -41,4 +42,17 @@
     <PackageReference Include="WebView.Avalonia" Version="11.0.0.1" />
     <PackageReference Include="WebView.Avalonia.Desktop" Version="11.0.0.1" />
   </ItemGroup>
+
+  <!-- Leave WebView2 bits outside the single-file bundle so the official loader can
+       resolve WebView2Loader.dll next to Microsoft.Web.WebView2.Core.dll. -->
+  <Target Name="ExcludeWebView2FromSingleFile"
+          AfterTargets="ComputeResolvedFilesToPublishList">
+    <ItemGroup>
+      <ResolvedFileToPublish Update="@(ResolvedFileToPublish)"
+                             Condition="'%(Filename)%(Extension)' == 'Microsoft.Web.WebView2.Core.dll'
+                                     or '%(Filename)%(Extension)' == 'WebView2Loader.dll'">
+        <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+      </ResolvedFileToPublish>
+    </ItemGroup>
+  </Target>
 </Project>
