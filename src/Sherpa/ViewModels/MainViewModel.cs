@@ -29,9 +29,9 @@ public partial class MainViewModel : ViewModelBase
             ToastBody = body;
             ShowToast = true;
         };
+        LoadSettingsFields();
         ReloadSites();
         RefreshRuntimeStatus();
-        LoadSettingsFields();
         ResetNewSiteForm();
         RefreshUpdateStatus();
         // Quiet background check after install — only when Velopack-installed
@@ -82,7 +82,7 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty] private string previewUrl = "";
     /// <summary>Bumped to force the WebView to reload even when the URL is unchanged.</summary>
     [ObservableProperty] private int previewReloadToken;
-    [ObservableProperty] private string statusLine = "Sherpa for Windows · 0.3.0";
+    [ObservableProperty] private string statusLine = "Sherpa for Windows · 0.3.1";
     [ObservableProperty] private string runtimeStatus = "";
     [ObservableProperty] private string updateStatus = "";
     [ObservableProperty] private string updateVersionLine = "";
@@ -427,6 +427,12 @@ public partial class MainViewModel : ViewModelBase
         foreach (var s in _svc.Sites.Load().OrderBy(s => s.Name))
             Sites.Add(s);
 
+        // Auto-pick up projects sitting in the default sites folder (and Herd folder)
+        // so a fresh install still shows sites that already exist on disk.
+        var discoveredAdded = DiscoverAndMergeSitesFromDisk(persist: true);
+        if (discoveredAdded > 0)
+            StatusLine = $"Found {discoveredAdded} site(s) in your sites folder.";
+
         // Prefer the previously selected site when it still exists.
         if (previousId is not null)
             SelectedSite = Sites.FirstOrDefault(s => s.Id == previousId);
@@ -439,12 +445,77 @@ public partial class MainViewModel : ViewModelBase
         RefreshEmptyStateCopy();
     }
 
+    /// <summary>
+    /// Scan default sites folder (+ Herd default if different) for composer.json projects
+    /// and merge any new ones into the sidebar list.
+    /// </summary>
+    private int DiscoverAndMergeSitesFromDisk(bool persist)
+    {
+        var folders = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var prefsFolder = DefaultSitesFolder?.Trim();
+        if (string.IsNullOrWhiteSpace(prefsFolder))
+            prefsFolder = _svc.Preferences.Load().DefaultSitesFolder;
+        if (string.IsNullOrWhiteSpace(prefsFolder))
+            prefsFolder = _svc.Herd.DefaultSitesDirectory();
+
+        if (!string.IsNullOrWhiteSpace(prefsFolder))
+            folders.Add(Path.GetFullPath(prefsFolder));
+        try
+        {
+            var herdDefault = _svc.Herd.DefaultSitesDirectory();
+            if (!string.IsNullOrWhiteSpace(herdDefault) && Directory.Exists(herdDefault))
+                folders.Add(Path.GetFullPath(herdDefault));
+        }
+        catch { /* ignore */ }
+
+        var discovered = new List<Site>();
+        foreach (var folder in folders)
+            discovered.AddRange(SiteDetector.DiscoverInFolder(folder));
+
+        var list = Sites.ToList();
+        var added = SiteDetector.MergeDiscovered(list, discovered);
+        if (added > 0)
+        {
+            Sites.Clear();
+            foreach (var s in list.OrderBy(s => s.Name))
+                Sites.Add(s);
+            if (persist)
+                PersistSites();
+        }
+        return added;
+    }
+
+    [RelayCommand]
+    private void ScanSitesFolder()
+    {
+        // Ensure settings field is used as the scan root
+        if (string.IsNullOrWhiteSpace(DefaultSitesFolder))
+            DefaultSitesFolder = _svc.Herd.DefaultSitesDirectory();
+
+        var added = DiscoverAndMergeSitesFromDisk(persist: true);
+        RefreshEmptyStateCopy();
+        if (SelectedSite is null && Sites.Count > 0)
+            SelectedSite = Sites[0];
+
+        if (added == 0)
+        {
+            StatusLine = Directory.Exists(DefaultSitesFolder)
+                ? $"No new sites found in {DefaultSitesFolder}."
+                : $"Sites folder not found: {DefaultSitesFolder}. Set Default sites folder in Settings.";
+        }
+        else
+        {
+            StatusLine = $"Added {added} site(s) from {DefaultSitesFolder}.";
+            SelectedNavIndex = 0;
+        }
+    }
+
     private void RefreshEmptyStateCopy()
     {
         if (Sites.Count == 0)
         {
             EmptyTitle = "Create your first site";
-            EmptyBody = "Sherpa sets up Statamic and handles Composer for you.";
+            EmptyBody = "Sherpa sets up Statamic and handles Composer for you. If sites already exist on disk, set Default sites folder in Settings and click Scan for sites.";
         }
         else
         {

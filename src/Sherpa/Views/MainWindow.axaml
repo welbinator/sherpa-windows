@@ -96,6 +96,7 @@
               <StackPanel Orientation="Horizontal" Spacing="10" HorizontalAlignment="Center" Margin="0,8,0,0">
                 <Button Classes="primary" Content="New Site" Command="{Binding OpenNewSiteWizardCommand}" />
                 <Button Content="Import Existing" Command="{Binding OpenImportSheetCommand}" />
+                <Button Content="Scan folder" Command="{Binding ScanSitesFolderCommand}" />
               </StackPanel>
             </StackPanel>
 
@@ -399,6 +400,11 @@
                     <TextBox Text="{Binding DefaultSitesFolder}" />
                     <Button Grid.Column="1" Margin="8,0,0,0" Content="Browse" Command="{Binding BrowseSitesFolderCommand}" />
                   </Grid>
+                  <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Button Content="Scan for sites" Command="{Binding ScanSitesFolderCommand}" />
+                  </StackPanel>
+                  <TextBlock Classes="muted" TextWrapping="Wrap" FontSize="12"
+                             Text="Scan looks one level deep for folders that contain composer.json (Statamic/Laravel) and adds any missing ones to the sidebar." />
                   <Grid ColumnDefinitions="*,Auto" Margin="0,4,0,0">
                     <TextBlock Text="Prefer Herd for new sites" VerticalAlignment="Center" />
                     <ToggleSwitch Grid.Column="1" IsChecked="{Binding PreferHerdForNewSites}" />
