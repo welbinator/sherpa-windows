@@ -34,9 +34,16 @@ public sealed class SiteCommandsService
         Action<string>? onLine,
         CancellationToken ct = default)
     {
-        // please make:user --email= --password=  (super via interactive historically; try flags)
-        var args = new List<string> { "make:user", $"--email={email}", $"--password={password}" };
-        if (super) args.Add("--super");
+        // Statamic: php please make:user {email} [--password=] [--super]
+        // Email is a positional argument — NOT --email (that flag does not exist).
+        if (string.IsNullOrWhiteSpace(email))
+            throw new InvalidOperationException("Email is required to create a user.");
+
+        var args = new List<string> { "make:user", email.Trim() };
+        if (!string.IsNullOrEmpty(password))
+            args.Add($"--password={password}");
+        if (super)
+            args.Add("--super");
         return await PhpPlease(sitePath, args, onLine, ct);
     }
 

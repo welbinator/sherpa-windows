@@ -20,6 +20,7 @@ public sealed class AppServices
     public GitHubClient GitHub { get; } = new();
     public CloudflarePagesClient Cloudflare { get; } = new();
     public PackagistClient Packagist { get; } = new();
+    public MarketplaceClient Marketplace { get; } = new();
     public ForgeClient Forge { get; } = new();
     public NetlifyClient Netlify { get; } = new();
     public LaravelCloudClient LaravelCloud { get; } = new();
@@ -31,6 +32,6 @@ public sealed class AppServices
         Composer = new ComposerService(Processes, Runtime);
         Git = new GitService(Processes, Runtime);
         Commands = new SiteCommandsService(Processes, Runtime);
-        Install = new InstallCoordinator(Processes, Runtime, Herd);
+        Install = new InstallCoordinator(Processes, Runtime, Herd, Git, Commands);
     }
 }

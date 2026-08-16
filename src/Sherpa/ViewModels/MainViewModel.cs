@@ -6,6 +6,7 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Platform.Storage;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Sherpa.Clients;
 using Sherpa.Models;
 using Sherpa.Services;
 using Sherpa.Support;
@@ -39,6 +40,9 @@ public partial class MainViewModel : ViewModelBase
     public ObservableCollection<DeploymentRecord> Deployments { get; } = new();
     public ObservableCollection<GitFileItem> GitFiles { get; } = new();
     public ObservableCollection<HostAccount> HostAccounts { get; } = new();
+    public ObservableCollection<StarterKitRow> FilteredKits { get; } = new();
+    private readonly List<StarterKitRow> _allKits = new();
+    private StarterKitRow? _blankKitCard;
 
     [ObservableProperty] private Site? selectedSite;
     [ObservableProperty] private int selectedNavIndex;
@@ -77,8 +81,36 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty] private string newSiteWillCreate = "";
     [ObservableProperty] private bool newSiteParkInHerd = true;
     [ObservableProperty] private bool newSiteSecureHttps = true;
-    [ObservableProperty] private bool startBlank = true;
-    [ObservableProperty] private bool startFreshStatamic;
+
+    // Wizard steps: 0 identity, 1 kits, 2 storage, 3 options
+    [ObservableProperty] private int wizardStep;
+    [ObservableProperty] private bool wizardIsIdentity = true;
+    [ObservableProperty] private bool wizardIsKits;
+    [ObservableProperty] private bool wizardIsStorage;
+    [ObservableProperty] private bool wizardIsOptions;
+    [ObservableProperty] private string wizardTitle = "New Site";
+    [ObservableProperty] private bool wizardCanGoBack;
+    [ObservableProperty] private bool wizardCanGoNext = true;
+    [ObservableProperty] private string kitSearch = "";
+    [ObservableProperty] private int kitPriceFilter; // 0 all 1 free 2 paid
+    [ObservableProperty] private bool kitsLoading;
+    [ObservableProperty] private string kitsStatus = "";
+    [ObservableProperty] private StarterKitRow? selectedKit;
+    [ObservableProperty] private bool storageFlatFiles = true;
+    [ObservableProperty] private bool storageSqlite;
+    [ObservableProperty] private bool storageMySql;
+    [ObservableProperty] private bool showMySqlFields;
+    [ObservableProperty] private string mySqlHost = "127.0.0.1";
+    [ObservableProperty] private string mySqlDatabase = "";
+    [ObservableProperty] private string mySqlUser = "root";
+    [ObservableProperty] private string mySqlPassword = "";
+    [ObservableProperty] private bool enableStatamicPro; // always forced off; UI disabled
+    [ObservableProperty] private bool installSsg;
+    [ObservableProperty] private bool initGit = true;
+    [ObservableProperty] private bool createSuperUserOnCreate;
+    [ObservableProperty] private string superUserName = "";
+    [ObservableProperty] private string superUserEmail = "";
+    [ObservableProperty] private string superUserPassword = "";
 
     [ObservableProperty] private string importPath = "";
     [ObservableProperty] private string defaultSitesFolder = "";
@@ -123,13 +155,47 @@ public partial class MainViewModel : ViewModelBase
     partial void OnNewSiteNameChanged(string value) => RefreshNewSitePreviews();
     partial void OnNewSiteFolderChanged(string value) => RefreshNewSitePreviews();
     partial void OnNewSiteSecureHttpsChanged(bool value) => RefreshNewSitePreviews();
-    partial void OnStartBlankChanged(bool value)
+
+    partial void OnWizardStepChanged(int value)
     {
-        if (value) StartFreshStatamic = false;
+        WizardIsIdentity = value == 0;
+        WizardIsKits = value == 1;
+        WizardIsStorage = value == 2;
+        WizardIsOptions = value == 3;
+        WizardTitle = value switch
+        {
+            0 => "New Site",
+            1 => "Starter kit",
+            2 => "Content storage",
+            3 => "Options",
+            _ => "New Site",
+        };
+        WizardCanGoBack = value > 0;
+        WizardCanGoNext = value < 3;
     }
-    partial void OnStartFreshStatamicChanged(bool value)
+
+    partial void OnKitSearchChanged(string value) => ApplyKitFilter();
+    partial void OnKitPriceFilterChanged(int value) => ApplyKitFilter();
+
+    partial void OnStorageFlatFilesChanged(bool value)
     {
-        if (value) StartBlank = false;
+        if (value) { StorageSqlite = false; StorageMySql = false; ShowMySqlFields = false; }
+    }
+    partial void OnStorageSqliteChanged(bool value)
+    {
+        if (value) { StorageFlatFiles = false; StorageMySql = false; ShowMySqlFields = false; }
+    }
+    partial void OnStorageMySqlChanged(bool value)
+    {
+        if (value)
+        {
+            StorageFlatFiles = false;
+            StorageSqlite = false;
+            ShowMySqlFields = true;
+            if (string.IsNullOrWhiteSpace(MySqlDatabase))
+                MySqlDatabase = HerdService.Slug(NewSiteName);
+        }
+        else ShowMySqlFields = false;
     }
 
     private void RefreshNewSitePreviews()
@@ -150,7 +216,119 @@ public partial class MainViewModel : ViewModelBase
             : p.DefaultSitesFolder;
         NewSiteParkInHerd = p.PreferHerdForNewSites;
         NewSiteSecureHttps = p.SecureNewHerdSitesWithHttps;
+        WizardStep = 0;
+        KitSearch = "";
+        KitPriceFilter = 0;
+        SelectedKit = null;
+        StorageFlatFiles = true;
+        StorageSqlite = false;
+        StorageMySql = false;
+        ShowMySqlFields = false;
+        MySqlHost = "127.0.0.1";
+        MySqlDatabase = "";
+        MySqlUser = "root";
+        MySqlPassword = "";
+        EnableStatamicPro = false;
+        InstallSsg = false;
+        InitGit = true;
+        CreateSuperUserOnCreate = false;
+        SuperUserName = "";
+        SuperUserEmail = "";
+        SuperUserPassword = "";
         RefreshNewSitePreviews();
+        EnsureBlankKitCard();
+        ApplyKitFilter();
+    }
+
+    private void EnsureBlankKitCard()
+    {
+        _blankKitCard ??= new StarterKitRow
+        {
+            IsBlank = true,
+            Name = "Blank site",
+            Summary = "Fresh Statamic, no starter kit.",
+            SellerName = "Statamic",
+            PriceLabel = "Default",
+            IsPaid = false,
+            Package = "",
+        };
+    }
+
+    private void ApplyKitFilter()
+    {
+        EnsureBlankKitCard();
+        FilteredKits.Clear();
+        // Blank always first when All or Free
+        var showBlank = KitPriceFilter is 0 or 1;
+        if (showBlank && (string.IsNullOrWhiteSpace(KitSearch) ||
+                          "blank site".Contains(KitSearch.Trim(), StringComparison.OrdinalIgnoreCase) ||
+                          "fresh".Contains(KitSearch.Trim(), StringComparison.OrdinalIgnoreCase)))
+            FilteredKits.Add(_blankKitCard!);
+
+        IEnumerable<StarterKitRow> q = _allKits;
+        if (KitPriceFilter == 1) q = q.Where(k => !k.IsPaid);
+        else if (KitPriceFilter == 2) q = q.Where(k => k.IsPaid);
+
+        var s = KitSearch?.Trim() ?? "";
+        if (!string.IsNullOrEmpty(s))
+            q = q.Where(k =>
+                k.Name.Contains(s, StringComparison.OrdinalIgnoreCase) ||
+                k.Summary.Contains(s, StringComparison.OrdinalIgnoreCase) ||
+                k.Package.Contains(s, StringComparison.OrdinalIgnoreCase) ||
+                k.SellerName.Contains(s, StringComparison.OrdinalIgnoreCase));
+
+        foreach (var k in q)
+            FilteredKits.Add(k);
+
+        // Keep selection if still visible
+        if (SelectedKit is not null && FilteredKits.All(k => k != SelectedKit && !(k.IsBlank && SelectedKit.IsBlank)))
+        {
+            // try rebind blank
+            if (SelectedKit.IsBlank)
+                SelectedKit = FilteredKits.FirstOrDefault(x => x.IsBlank);
+        }
+        if (SelectedKit is null && FilteredKits.Count > 0)
+            SelectedKit = FilteredKits[0];
+    }
+
+    private async Task LoadKitsIfNeededAsync()
+    {
+        if (_allKits.Count > 0) { ApplyKitFilter(); return; }
+        KitsLoading = true;
+        KitsStatus = "Loading Marketplace…";
+        try
+        {
+            var kits = await _svc.Marketplace.GetAllStarterKitsAsync();
+            _allKits.Clear();
+            foreach (var k in kits)
+            {
+                _allKits.Add(new StarterKitRow
+                {
+                    IsBlank = false,
+                    Name = k.Name,
+                    Summary = k.Summary,
+                    Package = k.Package,
+                    SellerName = k.SellerName,
+                    PriceLabel = k.PriceLabel,
+                    IsPaid = k.IsPaid,
+                    CoverUrl = k.CoverUrl,
+                    MarketplaceUrl = k.Url,
+                });
+            }
+            KitsStatus = $"{_allKits.Count} starter kits";
+            ApplyKitFilter();
+            if (SelectedKit is null)
+                SelectedKit = FilteredKits.FirstOrDefault();
+        }
+        catch (Exception ex)
+        {
+            KitsStatus = "Couldn’t load starter kits: " + ex.Message;
+            ApplyKitFilter();
+        }
+        finally
+        {
+            KitsLoading = false;
+        }
     }
 
     private void ReloadSites()
@@ -294,10 +472,11 @@ public partial class MainViewModel : ViewModelBase
         => GitFiles.Where(f => f.Selected).Select(f => f.Path);
 
     [RelayCommand]
-    private void OpenNewSiteWizard()
+    private async Task OpenNewSiteWizard()
     {
         ResetNewSiteForm();
         ShowNewSiteWizard = true;
+        await LoadKitsIfNeededAsync();
     }
 
     [RelayCommand] private void CloseNewSiteWizard() => ShowNewSiteWizard = false;
@@ -373,20 +552,123 @@ public partial class MainViewModel : ViewModelBase
     }
 
     [RelayCommand]
+    private async Task WizardNextAsync()
+    {
+        if (WizardStep == 0)
+        {
+            if (string.IsNullOrWhiteSpace(NewSiteName))
+            {
+                StatusLine = "Site name is required.";
+                return;
+            }
+            if (string.IsNullOrWhiteSpace(NewSiteFolder))
+            {
+                StatusLine = "Folder is required.";
+                return;
+            }
+            WizardStep = 1;
+            await LoadKitsIfNeededAsync();
+            return;
+        }
+        if (WizardStep == 1)
+        {
+            SelectedKit ??= FilteredKits.FirstOrDefault(k => k.IsBlank) ?? FilteredKits.FirstOrDefault();
+            if (SelectedKit is null)
+            {
+                StatusLine = "Pick Blank site or a starter kit.";
+                return;
+            }
+            if (SelectedKit.IsPaid)
+            {
+                StatusLine = "Paid starter kits need a Statamic license flow we haven’t wired yet. Pick Blank site or a Free kit.";
+                // still allow advancing so they can see — but Create will block. Better block here:
+                return;
+            }
+            WizardStep = 2;
+            return;
+        }
+        if (WizardStep == 2)
+        {
+            if (!StorageFlatFiles && !StorageSqlite && !StorageMySql)
+                StorageFlatFiles = true;
+            WizardStep = 3;
+        }
+    }
+
+    [RelayCommand]
+    private void SelectKitFilter(string? filter)
+    {
+        if (int.TryParse(filter, out var n)) KitPriceFilter = n;
+    }
+
+    [RelayCommand]
+    private void WizardBack()
+    {
+        if (WizardStep > 0) WizardStep--;
+    }
+
+    [RelayCommand]
+    private void SelectKit(StarterKitRow? kit)
+    {
+        if (kit is null) return;
+        SelectedKit = kit;
+    }
+
+    [RelayCommand]
     private async Task CreateSiteAsync()
     {
+        // Jump to options step create
+        if (WizardStep != 3)
+        {
+            // allow create only on last step
+            while (WizardStep < 3)
+                await WizardNextAsync();
+            if (WizardStep != 3) return;
+        }
+
+        if (CreateSuperUserOnCreate)
+        {
+            if (string.IsNullOrWhiteSpace(SuperUserEmail) || string.IsNullOrWhiteSpace(SuperUserPassword))
+            {
+                StatusLine = "Super user needs name/email/password — at least email and password.";
+                return;
+            }
+        }
+
+        EnableStatamicPro = false; // forced off for now
+
         var folder = string.IsNullOrWhiteSpace(NewSiteFolder) ? DefaultSitesFolder : NewSiteFolder;
-        // Always install Statamic — same happy path as Mac "create a site"
+        var kit = SelectedKit;
+        var storage = StorageMySql ? InstallCoordinator.ContentStorageKind.MySql
+            : StorageSqlite ? InstallCoordinator.ContentStorageKind.Sqlite
+            : InstallCoordinator.ContentStorageKind.FlatFiles;
+
+        var req = new InstallCoordinator.CreateRequest
+        {
+            ParentFolder = folder,
+            SiteName = NewSiteName.Trim(),
+            StarterKitPackage = kit is null || kit.IsBlank ? null : kit.Package,
+            StarterKitIsPaid = kit?.IsPaid == true,
+            Storage = storage,
+            MySqlHost = MySqlHost,
+            MySqlDatabase = string.IsNullOrWhiteSpace(MySqlDatabase) ? HerdService.Slug(NewSiteName) : MySqlDatabase,
+            MySqlUser = MySqlUser,
+            MySqlPassword = MySqlPassword,
+            EnablePro = false,
+            InstallSsg = InstallSsg,
+            InitGit = InitGit,
+            CreateSuperUser = CreateSuperUserOnCreate,
+            SuperUserName = SuperUserName,
+            SuperUserEmail = SuperUserEmail,
+            SuperUserPassword = SuperUserPassword,
+            ParkInHerd = NewSiteParkInHerd,
+            SecureHttps = NewSiteSecureHttps,
+        };
+
+        ShowNewSiteWizard = false;
         await RunJobAsync("New Site", async ct =>
         {
-            var (site, result, error) = await _svc.Install.CreateAsync(
-                folder,
-                NewSiteName.Trim(),
-                InstallCoordinator.StartingPoint.FreshStatamic,
-                NewSiteParkInHerd,
-                NewSiteSecureHttps,
-                AppendLog,
-                ct);
+            var (site, result, error) = await _svc.Install.CreateAsync(req, AppendLog, ct);
 
             if (result is not null && !result.Success)
             {
@@ -397,6 +679,7 @@ public partial class MainViewModel : ViewModelBase
             {
                 AppendLog(error);
                 ShowAdviceFrom(error + "\n" + (result?.Combined ?? ""));
+                ShowNewSiteWizard = true;
                 return;
             }
             if (site is null) return;
@@ -404,7 +687,6 @@ public partial class MainViewModel : ViewModelBase
             Sites.Add(site);
             PersistSites();
             SelectedSite = site;
-            ShowNewSiteWizard = false;
             _svc.Notifications.Notify("Site ready", $"{site.Name} is ready to open.");
             StatusLine = $"Created {site.Name}.";
             await RefreshSitePanelsAsync();
@@ -701,6 +983,16 @@ public partial class MainViewModel : ViewModelBase
     private async Task CreateUserAsync()
     {
         if (SelectedSite is null) return;
+        if (string.IsNullOrWhiteSpace(CreateUserEmail))
+        {
+            StatusLine = "Email is required to create a user.";
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(CreateUserPassword))
+        {
+            StatusLine = "Password is required (Statamic needs --password for non-interactive create).";
+            return;
+        }
         await RunJobAsync("Create User", async ct =>
         {
             var r = await _svc.Commands.MakeUserAsync(SelectedSite.Path, CreateUserEmail.Trim(), CreateUserPassword, CreateUserSuper, AppendLog, ct);
@@ -970,4 +1262,17 @@ public partial class GitFileItem : ObservableObject
     [ObservableProperty] private string path = "";
     [ObservableProperty] private string status = "";
     [ObservableProperty] private bool selected = true;
+}
+
+public partial class StarterKitRow : ObservableObject
+{
+    [ObservableProperty] private bool isBlank;
+    [ObservableProperty] private string name = "";
+    [ObservableProperty] private string summary = "";
+    [ObservableProperty] private string package = "";
+    [ObservableProperty] private string sellerName = "";
+    [ObservableProperty] private string priceLabel = "Free";
+    [ObservableProperty] private bool isPaid;
+    [ObservableProperty] private string? coverUrl;
+    [ObservableProperty] private string? marketplaceUrl;
 }

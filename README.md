@@ -2,7 +2,7 @@
 
 **Jack-crafted** Windows clone of [Sherpa](https://shepherd.app) — local Statamic / Laravel site manager.
 
-Version **0.2.0** (build 2). Reverse-engineered from the Mac app binary and rebuilt to match its flows (not a pixel-perfect skin).
+Version **0.2.2** (build 4). Reverse-engineered from the Mac app binary and rebuilt to match its flows (not a pixel-perfect skin).
 
 ## Download
 
@@ -26,7 +26,7 @@ SmartScreen may warn on unsigned builds → *More info* → *Run anyway*.
 | Area | Notes |
 |------|--------|
 | Sidebar Sites / Hosts / Settings | Same IA |
-| **New Site** wizard | Site name, Folder, URL preview, Will create, Park in Herd, Secure with HTTPS; Blank or Fresh Statamic |
+| **New Site** wizard | Identity → Marketplace starter kits (Blank default, All/Free/Paid) → Flat/SQLite/MySQL → Options (Pro locked off, SSG, Git, super user) |
 | Import Existing Site | Requires `composer.json` |
 | Overview | Path, URL, Link to Herd, Secure HTTPS, Create User, Commands, Remove/Delete |
 | Git | Save changes, Pull, Push, **Sync** (commit → pull --rebase --autostash → push), file checkboxes, Back up to GitHub |

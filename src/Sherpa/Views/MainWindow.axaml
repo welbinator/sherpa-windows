@@ -365,7 +365,7 @@
 
     <Border Grid.Row="1" Background="#0F1218" BorderBrush="#1E2430" BorderThickness="0,1,0,0" Padding="12,8">
       <TextBlock Foreground="#9AA3B2" FontSize="12"
-                 Text="Sherpa for Windows · 0.2.1 (build 3) · Tokens stay in the Windows secret store" />
+                 Text="Sherpa for Windows · 0.2.2 (build 4) · Tokens stay in the Windows secret store" />
     </Border>
 
     <!-- Toast -->
@@ -378,40 +378,135 @@
       </StackPanel>
     </Border>
 
-    <!-- NEW SITE WIZARD (Mac-shaped) -->
+    <!-- NEW SITE WIZARD (Mac multi-step) -->
     <Grid IsVisible="{Binding ShowNewSiteWizard}" Background="#99000000" ZIndex="30">
-      <Border Background="#161A22" Width="560" MaxHeight="640" HorizontalAlignment="Center" VerticalAlignment="Center"
-              CornerRadius="12" Padding="22" BorderBrush="#2A3140" BorderThickness="1">
-        <ScrollViewer>
-          <StackPanel Spacing="12">
-            <TextBlock Text="New Site" FontSize="22" FontWeight="SemiBold" />
-            <TextBlock Foreground="#9AA3B2" TextWrapping="Wrap"
-                       Text="Sherpa sets up Statamic and handles Composer for you. Fill in the name and folder, then create." />
-
-            <TextBlock Text="Site name" FontWeight="SemiBold" Margin="0,4,0,0" />
-            <TextBox Text="{Binding NewSiteName}" Watermark="my-site" />
-
-            <TextBlock Text="Folder" FontWeight="SemiBold" />
-            <Grid ColumnDefinitions="*,Auto">
-              <TextBox Text="{Binding NewSiteFolder}" />
-              <Button Grid.Column="1" Margin="8,0,0,0" Content="Browse" Command="{Binding BrowseNewSiteFolderCommand}" />
-            </Grid>
-
-            <TextBlock Text="URL preview" FontWeight="SemiBold" />
-            <TextBox Text="{Binding NewSiteUrlPreview}" IsReadOnly="True" />
-
-            <TextBlock Text="Will create" FontWeight="SemiBold" />
-            <TextBox Text="{Binding NewSiteWillCreate}" IsReadOnly="True" />
-
-            <CheckBox Content="Park in Herd and open as site.test" IsChecked="{Binding NewSiteParkInHerd}" />
-            <CheckBox Content="Secure with HTTPS (Herd)" IsChecked="{Binding NewSiteSecureHttps}" />
-
-            <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" Margin="0,8,0,0">
-              <Button Content="Cancel" Command="{Binding CloseNewSiteWizardCommand}" />
-              <Button Content="Create Site" Command="{Binding CreateSiteCommand}" />
+      <Border Background="#161A22" Width="720" Height="640" HorizontalAlignment="Center" VerticalAlignment="Center"
+              CornerRadius="12" Padding="20" BorderBrush="#2A3140" BorderThickness="1">
+        <DockPanel>
+          <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" Margin="0,0,0,12">
+            <StackPanel>
+              <TextBlock Text="{Binding WizardTitle}" FontSize="22" FontWeight="SemiBold" />
+              <TextBlock Foreground="#9AA3B2" FontSize="12" Margin="0,4,0,0"
+                         Text="Step flow matches Mac Sherpa: identity → starter kit → storage → options." />
             </StackPanel>
+            <Button Grid.Column="1" Content="Cancel" Command="{Binding CloseNewSiteWizardCommand}" VerticalAlignment="Top" />
+          </Grid>
+
+          <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" Margin="0,12,0,0">
+            <Button Content="Back" Command="{Binding WizardBackCommand}" IsVisible="{Binding WizardCanGoBack}" />
+            <Button Content="Next" Command="{Binding WizardNextCommand}" IsVisible="{Binding WizardCanGoNext}" />
+            <Button Content="Create Site" Command="{Binding CreateSiteCommand}" IsVisible="{Binding WizardIsOptions}" />
           </StackPanel>
-        </ScrollViewer>
+
+          <!-- STEP 0 identity -->
+          <ScrollViewer IsVisible="{Binding WizardIsIdentity}">
+            <StackPanel Spacing="10">
+              <TextBlock Foreground="#9AA3B2" TextWrapping="Wrap"
+                         Text="Sherpa sets up Statamic and handles Composer for you. Fill this in first — nothing installs until the last step." />
+              <TextBlock Text="Site name" FontWeight="SemiBold" />
+              <TextBox Text="{Binding NewSiteName}" Watermark="my-site" />
+              <TextBlock Text="Folder" FontWeight="SemiBold" />
+              <Grid ColumnDefinitions="*,Auto">
+                <TextBox Text="{Binding NewSiteFolder}" />
+                <Button Grid.Column="1" Margin="8,0,0,0" Content="Browse" Command="{Binding BrowseNewSiteFolderCommand}" />
+              </Grid>
+              <TextBlock Text="URL preview" FontWeight="SemiBold" />
+              <TextBox Text="{Binding NewSiteUrlPreview}" IsReadOnly="True" />
+              <TextBlock Text="Will create" FontWeight="SemiBold" />
+              <TextBox Text="{Binding NewSiteWillCreate}" IsReadOnly="True" />
+              <CheckBox Content="Park in Herd and open as site.test" IsChecked="{Binding NewSiteParkInHerd}" />
+              <CheckBox Content="Secure with HTTPS (Herd)" IsChecked="{Binding NewSiteSecureHttps}" />
+            </StackPanel>
+          </ScrollViewer>
+
+          <!-- STEP 1 kits -->
+          <DockPanel IsVisible="{Binding WizardIsKits}">
+            <StackPanel DockPanel.Dock="Top" Spacing="8" Margin="0,0,0,8">
+              <TextBlock Foreground="#9AA3B2" TextWrapping="Wrap"
+                         Text="Start blank or pick a Marketplace starter kit. Blank site = fresh Statamic with no kit (Mac default)." />
+              <Grid ColumnDefinitions="*,Auto">
+                <TextBox Watermark="Search starter kits" Text="{Binding KitSearch}" />
+                <TextBlock Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center" Foreground="#9AA3B2"
+                           Text="{Binding KitsStatus}" />
+              </Grid>
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <Button Content="All" Command="{Binding SelectKitFilterCommand}" CommandParameter="0" />
+                <Button Content="Free" Command="{Binding SelectKitFilterCommand}" CommandParameter="1" />
+                <Button Content="Paid" Command="{Binding SelectKitFilterCommand}" CommandParameter="2" />
+              </StackPanel>
+              <TextBlock IsVisible="{Binding KitsLoading}" Text="Loading Marketplace…" Foreground="#9AA3B2" />
+            </StackPanel>
+            <ListBox ItemsSource="{Binding FilteredKits}" SelectedItem="{Binding SelectedKit}" Background="Transparent">
+              <ListBox.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <WrapPanel />
+                </ItemsPanelTemplate>
+              </ListBox.ItemsPanel>
+              <ListBox.ItemTemplate>
+                <DataTemplate x:DataType="vm:StarterKitRow">
+                  <Border Width="200" Height="150" Margin="6" Padding="12" CornerRadius="10"
+                          Background="#0F1218" BorderBrush="#2A3140" BorderThickness="1">
+                    <StackPanel Spacing="4">
+                      <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                        <TextBlock Grid.Column="1" Text="{Binding PriceLabel}" Foreground="#9AA3B2" FontSize="11" />
+                      </Grid>
+                      <TextBlock Text="{Binding SellerName}" Foreground="#9AA3B2" FontSize="11" />
+                      <TextBlock Text="{Binding Summary}" Foreground="#9AA3B2" FontSize="11"
+                                 TextWrapping="Wrap" MaxHeight="72" TextTrimming="CharacterEllipsis" />
+                      <TextBlock Text="{Binding Package}" FontSize="10" Foreground="#6B7280" TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                  </Border>
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+          </DockPanel>
+
+          <!-- STEP 2 storage -->
+          <ScrollViewer IsVisible="{Binding WizardIsStorage}">
+            <StackPanel Spacing="12">
+              <TextBlock Foreground="#9AA3B2" TextWrapping="Wrap"
+                         Text="Where do you want to store your content and data? When in doubt, choose Flat Files. You can always change this later." />
+              <RadioButton Content="Flat Files (typical)" GroupName="Storage" IsChecked="{Binding StorageFlatFiles}" />
+              <RadioButton Content="Database — SQLite" GroupName="Storage" IsChecked="{Binding StorageSqlite}" />
+              <RadioButton Content="Database — MySQL" GroupName="Storage" IsChecked="{Binding StorageMySql}" />
+              <StackPanel IsVisible="{Binding ShowMySqlFields}" Spacing="8" Margin="0,8,0,0">
+                <TextBlock Text="MySQL connection" FontWeight="SemiBold" />
+                <TextBox Watermark="Host" Text="{Binding MySqlHost}" />
+                <TextBox Watermark="Database" Text="{Binding MySqlDatabase}" />
+                <TextBox Watermark="User" Text="{Binding MySqlUser}" />
+                <TextBox Watermark="Password" PasswordChar="•" Text="{Binding MySqlPassword}" />
+              </StackPanel>
+            </StackPanel>
+          </ScrollViewer>
+
+          <!-- STEP 3 options -->
+          <ScrollViewer IsVisible="{Binding WizardIsOptions}">
+            <StackPanel Spacing="12">
+              <TextBlock Foreground="#9AA3B2" TextWrapping="Wrap"
+                         Text="Last step before install. Create Site runs Composer and the rest of the setup." />
+
+              <StackPanel Spacing="4">
+                <CheckBox Content="Enable Statamic Pro" IsChecked="{Binding EnableStatamicPro}" IsEnabled="False" />
+                <TextBlock Foreground="#9AA3B2" FontSize="12" TextWrapping="Wrap" Margin="28,0,0,0"
+                           Text="Before your site goes live you will need a license on statamic.com. (Toggle locked off for now — login/license wiring comes later.)" />
+              </StackPanel>
+
+              <CheckBox Content="Generate a static site (installs the Static Site Generator add-on)" IsChecked="{Binding InstallSsg}" />
+              <CheckBox Content="Initialize Git" IsChecked="{Binding InitGit}" />
+              <CheckBox Content="Create a super user" IsChecked="{Binding CreateSuperUserOnCreate}" />
+
+              <StackPanel IsVisible="{Binding CreateSuperUserOnCreate}" Spacing="8" Margin="8,0,0,0">
+                <TextBlock Text="Name" FontWeight="SemiBold" />
+                <TextBox Text="{Binding SuperUserName}" />
+                <TextBlock Text="Email" FontWeight="SemiBold" />
+                <TextBox Text="{Binding SuperUserEmail}" />
+                <TextBlock Text="Password" FontWeight="SemiBold" />
+                <TextBox PasswordChar="•" Text="{Binding SuperUserPassword}" />
+              </StackPanel>
+            </StackPanel>
+          </ScrollViewer>
+        </DockPanel>
       </Border>
     </Grid>
 
