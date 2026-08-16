@@ -8,3 +8,7 @@ obj/
 publish/
 artifacts/
 *.log
+
+# Velopack local pack output (do not commit binaries)
+releases/
+publish/
