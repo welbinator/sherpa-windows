@@ -52,15 +52,32 @@
 
       <!-- Main -->
       <Grid Grid.Column="1" RowDefinitions="Auto,*">
-        <Border Grid.Row="0" Padding="22,16" BorderBrush="#18FFFFFF" BorderThickness="0,0,0,1">
-          <Grid ColumnDefinitions="*,Auto">
-            <StackPanel>
-              <TextBlock FontSize="20" FontWeight="SemiBold"
-                         Text="{Binding SelectedSite.Name, FallbackValue='Sherpa'}" />
-              <TextBlock Classes="muted" Text="{Binding StatusLine}" TextWrapping="Wrap"
-                         IsVisible="{Binding !IsInstallingSite}" Margin="0,2,0,0" />
+        <!-- Top chrome: path + Mac-style icon toolbar (only when a site is selected on Sites) -->
+        <Border Grid.Row="0" Padding="14,10" BorderBrush="#18FFFFFF" BorderThickness="0,0,0,1">
+          <Grid ColumnDefinitions="*,Auto,Auto">
+            <StackPanel VerticalAlignment="Center" IsVisible="{Binding SelectedSite, Converter={x:Static ObjectConverters.IsNotNull}}">
+              <TextBlock FontSize="12" Classes="dim" Text="Sites" />
+              <TextBlock FontSize="12" Classes="muted" Text="{Binding SelectedSite.Path}" TextTrimming="CharacterEllipsis" />
             </StackPanel>
-            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+            <StackPanel VerticalAlignment="Center" IsVisible="{Binding SelectedSite, Converter={x:Static ObjectConverters.IsNull}}">
+              <TextBlock FontSize="16" FontWeight="SemiBold" Text="Sherpa" />
+              <TextBlock Classes="muted" FontSize="12" Text="{Binding StatusLine}" TextTrimming="CharacterEllipsis"
+                         IsVisible="{Binding !IsInstallingSite}" />
+            </StackPanel>
+
+            <!-- Icon toolbar -->
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="2" VerticalAlignment="Center"
+                        IsVisible="{Binding SelectedSite, Converter={x:Static ObjectConverters.IsNotNull}}">
+              <Button Classes="icon" Content="🗑" ToolTip.Tip="Remove site" Command="{Binding ConfirmRemoveCommand}" />
+              <Button Classes="icon" Content="🌐" ToolTip.Tip="Open in browser" Command="{Binding OpenSiteUrlCommand}" />
+              <Button Classes="icon" Content="📁" ToolTip.Tip="Open folder" Command="{Binding OpenSiteFolderCommand}" />
+              <Button Classes="icon" Content="👤" ToolTip.Tip="Create user" Command="{Binding OpenCreateUserSheetCommand}" />
+              <Button Classes="icon" Content="⌘" ToolTip.Tip="Commands" Command="{Binding OpenCommandsSheetCommand}" />
+              <Button Classes="icon" Content="⚙" ToolTip.Tip="Site tools (Herd link / HTTPS)" Command="{Binding OpenSiteToolsCommand}" />
+              <Button Classes="icon" Content="⧉" ToolTip.Tip="Copy path" Command="{Binding CopySitePathCommand}" />
+            </StackPanel>
+
+            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" Margin="12,0,0,0">
               <Button Classes="ghost" Content="Copy errors" Command="{Binding CopyErrorsCommand}" />
             </StackPanel>
           </Grid>
@@ -69,7 +86,7 @@
         <Panel Grid.Row="1">
           <!-- SITES -->
           <Grid IsVisible="{Binding IsSitesNav}">
-            <!-- Empty state (Mac-style centered) -->
+            <!-- Empty state -->
             <StackPanel IsVisible="{Binding SelectedSite, Converter={x:Static ObjectConverters.IsNull}}"
                         VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="10" MaxWidth="420">
               <TextBlock Text="＋" FontSize="36" Foreground="#48484A" HorizontalAlignment="Center" />
@@ -81,239 +98,227 @@
               </StackPanel>
             </StackPanel>
 
-            <!-- Site detail -->
-            <Grid IsVisible="{Binding SelectedSite, Converter={x:Static ObjectConverters.IsNotNull}}"
-                  ColumnDefinitions="*,300" Margin="16,8,16,0">
-              <DockPanel Margin="0,0,12,0">
-                <TabControl SelectedIndex="{Binding SelectedDetailTab}">
-                  <TabItem Header="Overview">
-                    <!-- Bottom padding so last buttons aren't clipped -->
-                    <ScrollViewer Padding="4,12,8,40">
-                      <StackPanel Spacing="14" MaxWidth="820" HorizontalAlignment="Stretch">
-                        <!-- Install status -->
-                        <Border IsVisible="{Binding IsInstallingSite}" Classes="card" BorderBrush="#0A84FF" BorderThickness="1">
-                          <StackPanel Spacing="10">
-                            <Grid ColumnDefinitions="*,Auto">
-                              <TextBlock Text="Installing" FontWeight="SemiBold" FontSize="15" />
-                              <TextBlock Grid.Column="1" Classes="muted" Text="{Binding InstallStatus}" TextTrimming="CharacterEllipsis" MaxWidth="360" />
-                            </Grid>
-                            <ProgressBar Minimum="0" Maximum="100" Value="{Binding InstallProgress}"
-                                         IsIndeterminate="{Binding InstallProgressIndeterminate}" />
-                          </StackPanel>
-                        </Border>
+            <!-- Site detail: full width, Mac layout -->
+            <DockPanel IsVisible="{Binding SelectedSite, Converter={x:Static ObjectConverters.IsNotNull}}" Margin="0">
+              <!-- Centered pill tabs -->
+              <Border DockPanel.Dock="Top" Padding="16,12,16,4">
+                <StackPanel Orientation="Horizontal" Spacing="4" HorizontalAlignment="Center">
+                  <Button Content="Overview" Command="{Binding SetDetailTabCommand}" CommandParameter="0"
+                          Classes="pill" IsVisible="{Binding !IsDetailOverview}" />
+                  <Button Content="Overview" Classes="pill-on" IsVisible="{Binding IsDetailOverview}" IsHitTestVisible="False" />
+                  <Button Content="Packages" Command="{Binding SetDetailTabCommand}" CommandParameter="1"
+                          Classes="pill" IsVisible="{Binding !IsDetailPackages}" />
+                  <Button Content="Packages" Classes="pill-on" IsVisible="{Binding IsDetailPackages}" IsHitTestVisible="False" />
+                  <Button Content="Git" Command="{Binding SetDetailTabCommand}" CommandParameter="2"
+                          Classes="pill" IsVisible="{Binding !IsDetailGit}" />
+                  <Button Content="Git" Classes="pill-on" IsVisible="{Binding IsDetailGit}" IsHitTestVisible="False" />
+                  <Button Content="Deploy" Command="{Binding SetDetailTabCommand}" CommandParameter="3"
+                          Classes="pill" IsVisible="{Binding !IsDetailDeploy}" />
+                  <Button Content="Deploy" Classes="pill-on" IsVisible="{Binding IsDetailDeploy}" IsHitTestVisible="False" />
+                  <Button Content="Activity" Command="{Binding SetDetailTabCommand}" CommandParameter="4"
+                          Classes="pill" IsVisible="{Binding !IsDetailActivity}" />
+                  <Button Content="Activity" Classes="pill-on" IsVisible="{Binding IsDetailActivity}" IsHitTestVisible="False" />
+                </StackPanel>
+              </Border>
 
-                        <!-- Preview -->
-                        <Border Classes="card" Padding="0" ClipToBounds="True">
-                          <Grid RowDefinitions="160,Auto">
-                            <Border Grid.Row="0" Background="#111114">
-                              <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="6" Margin="16">
-                                <TextBlock Text="{Binding SitePreviewBadge}" Foreground="#0A84FF" FontSize="12" HorizontalAlignment="Center" />
-                                <TextBlock Text="{Binding SitePreviewTitle}" FontSize="26" FontWeight="Bold" HorizontalAlignment="Center" />
-                                <TextBlock Text="{Binding SitePreviewSubtitle}" Classes="muted" FontSize="13"
-                                           HorizontalAlignment="Center" TextWrapping="Wrap" MaxWidth="520" TextAlignment="Center" />
-                              </StackPanel>
-                            </Border>
-                            <Border Grid.Row="1" Padding="14">
-                              <Grid ColumnDefinitions="*,Auto">
-                                <TextBlock Text="{Binding SelectedSite.Url}" Classes="muted" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
-                                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
-                                  <Button Classes="primary" Content="Open site" Command="{Binding OpenSiteUrlCommand}" />
-                                  <Button Content="Open folder" Command="{Binding OpenSiteFolderCommand}" />
-                                </StackPanel>
-                              </Grid>
-                            </Border>
-                          </Grid>
-                        </Border>
+              <!-- Single fill host so every tab gets height + scroll -->
+              <Panel>
+              <!-- OVERVIEW -->
+              <ScrollViewer IsVisible="{Binding IsDetailOverview}" Padding="28,8,28,48">
+                <StackPanel Spacing="16" MaxWidth="880" HorizontalAlignment="Center">
+                  <!-- Live preview card (Mac-style) -->
+                  <Border Classes="card" Padding="14">
+                    <StackPanel Spacing="10">
+                      <Border Classes="preview-frame" MinHeight="280" MaxHeight="420">
+                        <ScrollViewer Padding="16" HorizontalScrollBarVisibility="Disabled">
+                          <TextBlock Text="{Binding SitePreviewBody}"
+                                     FontFamily="Cascadia Mono, Consolas, monospace"
+                                     FontSize="12"
+                                     TextWrapping="Wrap"
+                                     Foreground="#1C1C1E" />
+                        </ScrollViewer>
+                      </Border>
+                      <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Text="{Binding SitePreviewUrlLine}" Classes="muted" VerticalAlignment="Center"
+                                   TextTrimming="CharacterEllipsis" />
+                        <Button Grid.Column="1" Classes="ghost" Content="Refresh preview"
+                                Command="{Binding RefreshPreviewCommand}" />
+                      </Grid>
+                    </StackPanel>
+                  </Border>
 
-                        <Border Classes="card">
-                          <StackPanel Spacing="10">
-                            <TextBlock Text="Path" FontWeight="SemiBold" />
-                            <TextBox Text="{Binding SelectedSite.Path}" IsReadOnly="True" />
-                            <TextBlock Text="URL preview" FontWeight="SemiBold" Margin="0,4,0,0" />
-                            <TextBox Text="{Binding SelectedSite.Url}" />
-                            <TextBlock Classes="muted" Text="{Binding SelectedSite.Kind}" />
-                            <WrapPanel Margin="0,6,0,0">
-                              <Button Margin="0,0,8,8" Content="Link to Herd" Command="{Binding LinkHerdCommand}" />
-                              <Button Margin="0,0,8,8" Content="Secure with HTTPS" Command="{Binding SecureHerdCommand}" />
-                              <Button Margin="0,0,8,8" Content="Create User" Command="{Binding OpenCreateUserSheetCommand}" />
-                              <Button Margin="0,0,8,8" Content="Commands" Command="{Binding OpenCommandsSheetCommand}" />
-                              <Button Classes="danger" Margin="0,0,8,8" Content="Remove from Sherpa" Command="{Binding ConfirmRemoveCommand}" />
-                            </WrapPanel>
-                          </StackPanel>
-                        </Border>
+                  <!-- Installing -->
+                  <Border IsVisible="{Binding IsInstallingSite}" Classes="card">
+                    <StackPanel Spacing="10">
+                      <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Text="Installing" FontWeight="SemiBold" FontSize="15" />
+                        <TextBlock Grid.Column="1" Classes="muted" Text="{Binding InstallPhaseLabel}" />
+                      </Grid>
+                      <Grid ColumnDefinitions="Auto,*">
+                        <TextBlock Text="Status" Classes="muted" VerticalAlignment="Center" Margin="0,0,12,0" />
+                        <ProgressBar Grid.Column="1" Minimum="0" Maximum="100" Value="{Binding InstallProgress}"
+                                     IsIndeterminate="{Binding InstallProgressIndeterminate}" VerticalAlignment="Center" />
+                      </Grid>
+                      <TextBlock Text="{Binding InstallStatus}" Classes="muted" TextWrapping="Wrap" />
+                      <Button Classes="ghost" Content="Show / hide details" HorizontalAlignment="Left"
+                              Command="{Binding ToggleInstallDetailsCommand}" />
+                      <TextBox IsVisible="{Binding ShowInstallDetails}" Classes="log" Text="{Binding LogText}" MinHeight="140" />
+                    </StackPanel>
+                  </Border>
 
-                        <Border Classes="card">
-                          <StackPanel Spacing="10">
-                            <TextBlock Text="Statamic Utilities" FontWeight="SemiBold" />
-                            <TextBlock Classes="muted" TextWrapping="Wrap"
-                                       Text="Clear Cache flushes Laravel caches. Clear Stache rebuilds Statamic's content index. Clear Glide Cache deletes generated image transforms." />
-                            <WrapPanel>
-                              <Button Margin="0,0,8,8" Content="Clear Cache" Command="{Binding ClearCacheCommand}" />
-                              <Button Margin="0,0,8,8" Content="Clear Stache" Command="{Binding ClearStacheCommand}" />
-                              <Button Margin="0,0,8,8" Content="Warm Stache" Command="{Binding WarmStacheCommand}" />
-                              <Button Margin="0,0,8,8" Content="Clear Glide Cache" Command="{Binding ClearGlideCommand}" />
-                              <Button Margin="0,0,8,8" Content="Composer install" Command="{Binding ComposerInstallCommand}" />
-                              <Button Margin="0,0,8,8" Classes="primary" Content="Update Packages" Command="{Binding ComposerUpdateCommand}" />
-                            </WrapPanel>
-                          </StackPanel>
-                        </Border>
-                      </StackPanel>
-                    </ScrollViewer>
-                  </TabItem>
-
-                  <TabItem Header="Git">
-                    <ScrollViewer Padding="4,12,8,40">
-                      <StackPanel Spacing="14" MaxWidth="820">
-                        <TextBlock Classes="muted" TextWrapping="Wrap"
-                                   Text="Save changes commits checked files locally. Nothing goes to GitHub until you Push or Sync." />
-                        <WrapPanel>
-                          <Button Margin="0,0,8,8" Content="Refresh" Command="{Binding RefreshGitCommand}" />
-                          <Button Margin="0,0,8,8" Content="Initialize Git" Command="{Binding GitInitCommand}" />
-                          <Button Margin="0,0,8,8" Classes="primary" Content="Save changes" Command="{Binding SaveChangesCommand}" />
-                          <Button Margin="0,0,8,8" Content="Pull" Command="{Binding PullCommand}" />
-                          <Button Margin="0,0,8,8" Content="Push" Command="{Binding PushCommand}" />
-                          <Button Margin="0,0,8,8" Classes="primary" Content="Sync" Command="{Binding SyncCommand}" />
-                        </WrapPanel>
-                        <Border Classes="card">
-                          <StackPanel Spacing="8">
-                            <TextBlock Text="{Binding GitBranchLine}" FontWeight="SemiBold" TextWrapping="Wrap" />
-                            <TextBlock Text="Commit message" FontWeight="SemiBold" />
-                            <TextBox Text="{Binding GitCommitMessage}" />
-                            <Grid ColumnDefinitions="*,*" Margin="0,4,0,0">
-                              <StackPanel Margin="0,0,8,0">
-                                <TextBlock Text="Git name" FontWeight="SemiBold" />
-                                <TextBox Text="{Binding GitUserName}" Watermark="Required once" />
-                              </StackPanel>
-                              <StackPanel Grid.Column="1">
-                                <TextBlock Text="Git email" FontWeight="SemiBold" />
-                                <TextBox Text="{Binding GitUserEmail}" Watermark="Required once" />
-                              </StackPanel>
-                            </Grid>
-                          </StackPanel>
-                        </Border>
-                        <Border Classes="card">
-                          <StackPanel Spacing="8">
-                            <TextBlock Text="Changed files" FontWeight="SemiBold" />
-                            <ItemsControl ItemsSource="{Binding GitFiles}">
-                              <ItemsControl.ItemTemplate>
-                                <DataTemplate x:DataType="vm:GitFileItem">
-                                  <Grid ColumnDefinitions="Auto,Auto,*" Margin="0,4">
-                                    <CheckBox IsChecked="{Binding Selected}" />
-                                    <TextBlock Grid.Column="1" Text="{Binding Status}" Width="36" Margin="8,0" FontFamily="Consolas" VerticalAlignment="Center" />
-                                    <TextBlock Grid.Column="2" Text="{Binding Path}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
-                                  </Grid>
-                                </DataTemplate>
-                              </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                          </StackPanel>
-                        </Border>
-                        <Button Classes="primary" Content="Back up to GitHub" Command="{Binding BackupToGitHubCommand}" HorizontalAlignment="Left" />
-                        <Border Classes="card">
-                          <StackPanel Spacing="8">
-                            <TextBlock Text="Recent commits" FontWeight="SemiBold" />
-                            <TextBox Classes="log" Text="{Binding GitLogText}" MinHeight="140" />
-                          </StackPanel>
-                        </Border>
-                      </StackPanel>
-                    </ScrollViewer>
-                  </TabItem>
-
-                  <TabItem Header="Packages">
-                    <DockPanel Margin="4,12,4,0">
-                      <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,12">
-                        <Button Margin="0,0,8,8" Classes="primary" Content="Composer require…" Command="{Binding OpenComposerSheetCommand}" />
-                        <Button Margin="0,0,8,8" Content="Update Packages" Command="{Binding ComposerUpdateCommand}" />
-                        <Button Margin="0,0,8,8" Content="Composer install" Command="{Binding ComposerInstallCommand}" />
+                  <!-- Statamic Utilities only (actions live in the top icon bar) -->
+                  <Border Classes="card">
+                    <StackPanel Spacing="10">
+                      <TextBlock Text="Statamic Utilities" FontWeight="SemiBold" />
+                      <TextBlock Classes="muted" TextWrapping="Wrap"
+                                 Text="Clear Cache flushes Laravel caches. Clear Stache rebuilds Statamic's content index. Clear Glide Cache deletes generated image transforms." />
+                      <WrapPanel>
+                        <Button Margin="0,0,8,8" Content="Clear Cache" Command="{Binding ClearCacheCommand}" />
+                        <Button Margin="0,0,8,8" Content="Clear Stache" Command="{Binding ClearStacheCommand}" />
+                        <Button Margin="0,0,8,8" Content="Warm Stache" Command="{Binding WarmStacheCommand}" />
+                        <Button Margin="0,0,8,8" Content="Clear Glide Cache" Command="{Binding ClearGlideCommand}" />
                       </WrapPanel>
-                      <ScrollViewer Padding="0,0,8,40">
-                        <ItemsControl ItemsSource="{Binding Packages}">
-                          <ItemsControl.ItemTemplate>
-                            <DataTemplate x:DataType="vm:PackageRow">
-                              <Border Classes="card" Margin="0,0,0,10">
-                                <StackPanel Spacing="2">
-                                  <TextBlock FontWeight="SemiBold" Text="{Binding Name}" />
-                                  <TextBlock Classes="muted" Text="{Binding Version}" />
-                                  <TextBlock Classes="muted" Text="{Binding Description}" TextWrapping="Wrap" />
-                                </StackPanel>
-                              </Border>
-                            </DataTemplate>
-                          </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                      </ScrollViewer>
-                    </DockPanel>
-                  </TabItem>
+                    </StackPanel>
+                  </Border>
+                </StackPanel>
+              </ScrollViewer>
 
-                  <TabItem Header="Commands">
-                    <ScrollViewer Padding="4,12,8,40">
-                      <StackPanel Spacing="14" MaxWidth="760">
-                        <TextBlock Classes="muted" TextWrapping="Wrap"
-                                   Text="Runs real please / artisan commands in this site's folder." />
-                        <WrapPanel>
-                          <Button Margin="0,0,8,8" Content="Clear Cache" Command="{Binding ClearCacheCommand}" />
-                          <Button Margin="0,0,8,8" Content="Clear Stache" Command="{Binding ClearStacheCommand}" />
-                          <Button Margin="0,0,8,8" Content="Warm Stache" Command="{Binding WarmStacheCommand}" />
-                          <Button Margin="0,0,8,8" Content="Clear Glide Cache" Command="{Binding ClearGlideCommand}" />
-                          <Button Margin="0,0,8,8" Classes="primary" Content="Create User" Command="{Binding OpenCreateUserSheetCommand}" />
-                          <Button Margin="0,0,8,8" Content="Run custom…" Command="{Binding OpenCommandsSheetCommand}" />
-                        </WrapPanel>
-                      </StackPanel>
-                    </ScrollViewer>
-                  </TabItem>
-
-                  <TabItem Header="Deploy">
-                    <ScrollViewer Padding="4,12,8,40">
-                      <StackPanel Spacing="14" MaxWidth="760">
-                        <Border Classes="card">
-                          <StackPanel Spacing="10">
-                            <TextBlock Text="Deploy" FontWeight="SemiBold" />
-                            <TextBlock Classes="muted" TextWrapping="Wrap"
-                                       Text="Laravel Cloud for dynamic sites. Netlify or Cloudflare Pages for static SSG. Connect hosts first — tokens stay in the secret store." />
-                            <Button Content="Check deploy prerequisites" Command="{Binding DeployPrerequisiteCheckCommand}" HorizontalAlignment="Left" />
-                            <Button Content="Back up to GitHub first" Command="{Binding BackupToGitHubCommand}" HorizontalAlignment="Left" />
-                            <Button Classes="primary" Content="Connect a New Host" Command="{Binding OpenConnectHostSheetCommand}" HorizontalAlignment="Left" />
+              <!-- PACKAGES -->
+              <DockPanel IsVisible="{Binding IsDetailPackages}" Margin="28,8,28,0">
+                <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,12">
+                  <Button Margin="0,0,8,8" Classes="primary" Content="Composer require…" Command="{Binding OpenComposerSheetCommand}" />
+                  <Button Margin="0,0,8,8" Content="Update Packages" Command="{Binding ComposerUpdateCommand}" />
+                  <Button Margin="0,0,8,8" Content="Composer install" Command="{Binding ComposerInstallCommand}" />
+                </WrapPanel>
+                <ScrollViewer Padding="0,0,8,48">
+                  <ItemsControl ItemsSource="{Binding Packages}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="vm:PackageRow">
+                        <Border Classes="card" Margin="0,0,0,10">
+                          <StackPanel Spacing="2">
+                            <TextBlock FontWeight="SemiBold" Text="{Binding Name}" />
+                            <TextBlock Classes="muted" Text="{Binding Version}" />
+                            <TextBlock Classes="muted" Text="{Binding Description}" TextWrapping="Wrap" />
                           </StackPanel>
                         </Border>
-                        <Border Classes="card">
-                          <StackPanel Spacing="8">
-                            <TextBlock Text="Deployment history" FontWeight="SemiBold" />
-                            <TextBlock Classes="muted" Text="No deploys yet." />
-                            <ItemsControl ItemsSource="{Binding Deployments}">
-                              <ItemsControl.ItemTemplate>
-                                <DataTemplate x:DataType="models:DeploymentRecord">
-                                  <TextBlock Margin="0,4" Text="{Binding Summary}" />
-                                </DataTemplate>
-                              </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                          </StackPanel>
-                        </Border>
-                      </StackPanel>
-                    </ScrollViewer>
-                  </TabItem>
-                </TabControl>
-              </DockPanel>
-
-              <!-- Activity rail -->
-              <DockPanel Grid.Column="1" Margin="4,8,0,0">
-                <TextBlock DockPanel.Dock="Top" Text="Activity" FontWeight="SemiBold" Margin="0,0,0,8" />
-                <ScrollViewer>
-                  <StackPanel Spacing="8" Margin="0,0,0,24">
-                    <ItemsControl ItemsSource="{Binding Advice}">
-                      <ItemsControl.ItemTemplate>
-                        <DataTemplate x:DataType="models:ConflictAdvice">
-                          <Border Background="#2A1A20" CornerRadius="10" Padding="12" BorderBrush="#5B3A4A" BorderThickness="1" Margin="0,0,0,8">
-                            <StackPanel Spacing="4">
-                              <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="13" />
-                              <TextBlock Text="{Binding Detail}" Classes="muted" TextWrapping="Wrap" FontSize="12" />
-                            </StackPanel>
-                          </Border>
-                        </DataTemplate>
-                      </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                    <TextBox Classes="log" Text="{Binding LogText}" MinHeight="220" />
-                  </StackPanel>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
                 </ScrollViewer>
               </DockPanel>
-            </Grid>
+
+              <!-- GIT -->
+              <ScrollViewer IsVisible="{Binding IsDetailGit}" Padding="28,8,28,48">
+                <StackPanel Spacing="14" MaxWidth="880" HorizontalAlignment="Center">
+                  <TextBlock Classes="muted" TextWrapping="Wrap"
+                             Text="Save changes commits checked files locally. Nothing goes to GitHub until you Push or Sync." />
+                  <WrapPanel>
+                    <Button Margin="0,0,8,8" Content="Refresh" Command="{Binding RefreshGitCommand}" />
+                    <Button Margin="0,0,8,8" Content="Initialize Git" Command="{Binding GitInitCommand}" />
+                    <Button Margin="0,0,8,8" Classes="primary" Content="Save changes" Command="{Binding SaveChangesCommand}" />
+                    <Button Margin="0,0,8,8" Content="Pull" Command="{Binding PullCommand}" />
+                    <Button Margin="0,0,8,8" Content="Push" Command="{Binding PushCommand}" />
+                    <Button Margin="0,0,8,8" Classes="primary" Content="Sync" Command="{Binding SyncCommand}" />
+                  </WrapPanel>
+                  <Border Classes="card">
+                    <StackPanel Spacing="8">
+                      <TextBlock Text="{Binding GitBranchLine}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                      <TextBlock Text="Commit message" FontWeight="SemiBold" />
+                      <TextBox Text="{Binding GitCommitMessage}" />
+                      <Grid ColumnDefinitions="*,*" Margin="0,4,0,0">
+                        <StackPanel Margin="0,0,8,0">
+                          <TextBlock Text="Git name" FontWeight="SemiBold" />
+                          <TextBox Text="{Binding GitUserName}" Watermark="Required once" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1">
+                          <TextBlock Text="Git email" FontWeight="SemiBold" />
+                          <TextBox Text="{Binding GitUserEmail}" Watermark="Required once" />
+                        </StackPanel>
+                      </Grid>
+                    </StackPanel>
+                  </Border>
+                  <Border Classes="card">
+                    <StackPanel Spacing="8">
+                      <TextBlock Text="Changed files" FontWeight="SemiBold" />
+                      <ItemsControl ItemsSource="{Binding GitFiles}">
+                        <ItemsControl.ItemTemplate>
+                          <DataTemplate x:DataType="vm:GitFileItem">
+                            <Grid ColumnDefinitions="Auto,Auto,*" Margin="0,4">
+                              <CheckBox IsChecked="{Binding Selected}" />
+                              <TextBlock Grid.Column="1" Text="{Binding Status}" Width="36" Margin="8,0" FontFamily="Consolas" VerticalAlignment="Center" />
+                              <TextBlock Grid.Column="2" Text="{Binding Path}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                            </Grid>
+                          </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                      </ItemsControl>
+                    </StackPanel>
+                  </Border>
+                  <Button Classes="primary" Content="Back up to GitHub" Command="{Binding BackupToGitHubCommand}" HorizontalAlignment="Left" />
+                  <Border Classes="card">
+                    <StackPanel Spacing="8">
+                      <TextBlock Text="Recent commits" FontWeight="SemiBold" />
+                      <TextBox Classes="log" Text="{Binding GitLogText}" MinHeight="140" />
+                    </StackPanel>
+                  </Border>
+                </StackPanel>
+              </ScrollViewer>
+
+              <!-- DEPLOY -->
+              <ScrollViewer IsVisible="{Binding IsDetailDeploy}" Padding="28,8,28,48">
+                <StackPanel Spacing="14" MaxWidth="880" HorizontalAlignment="Center">
+                  <Border Classes="card">
+                    <StackPanel Spacing="10">
+                      <TextBlock Text="Deploy" FontWeight="SemiBold" />
+                      <TextBlock Classes="muted" TextWrapping="Wrap"
+                                 Text="Laravel Cloud for dynamic sites. Netlify or Cloudflare Pages for static SSG. Connect hosts first — tokens stay in the secret store." />
+                      <Button Content="Check deploy prerequisites" Command="{Binding DeployPrerequisiteCheckCommand}" HorizontalAlignment="Left" />
+                      <Button Content="Back up to GitHub first" Command="{Binding BackupToGitHubCommand}" HorizontalAlignment="Left" />
+                      <Button Classes="primary" Content="Connect a New Host" Command="{Binding OpenConnectHostSheetCommand}" HorizontalAlignment="Left" />
+                    </StackPanel>
+                  </Border>
+                  <Border Classes="card">
+                    <StackPanel Spacing="8">
+                      <TextBlock Text="Deployment history" FontWeight="SemiBold" />
+                      <TextBlock Classes="muted" Text="No deploys yet." />
+                      <ItemsControl ItemsSource="{Binding Deployments}">
+                        <ItemsControl.ItemTemplate>
+                          <DataTemplate x:DataType="models:DeploymentRecord">
+                            <TextBlock Margin="0,4" Text="{Binding Summary}" />
+                          </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                      </ItemsControl>
+                    </StackPanel>
+                  </Border>
+                </StackPanel>
+              </ScrollViewer>
+
+              <!-- ACTIVITY (was side rail) -->
+              <ScrollViewer IsVisible="{Binding IsDetailActivity}" Padding="28,8,28,48">
+                <StackPanel Spacing="14" MaxWidth="880" HorizontalAlignment="Center">
+                  <TextBlock Classes="muted" TextWrapping="Wrap"
+                             Text="Live log output and conflict advice from the last command." />
+                  <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Button Content="Copy errors" Command="{Binding CopyErrorsCommand}" />
+                  </StackPanel>
+                  <ItemsControl ItemsSource="{Binding Advice}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="models:ConflictAdvice">
+                        <Border Background="#2A1A20" CornerRadius="10" Padding="12" BorderBrush="#5B3A4A" BorderThickness="1" Margin="0,0,0,8">
+                          <StackPanel Spacing="4">
+                            <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="13" />
+                            <TextBlock Text="{Binding Detail}" Classes="muted" TextWrapping="Wrap" FontSize="12" />
+                          </StackPanel>
+                        </Border>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                  <Border Classes="card" Padding="0">
+                    <TextBox Classes="log" Text="{Binding LogText}" MinHeight="360" />
+                  </Border>
+                </StackPanel>
+              </ScrollViewer>
+              </Panel>
+            </DockPanel>
           </Grid>
 
           <!-- HOSTS -->
@@ -695,6 +700,24 @@
           <StackPanel Orientation="Horizontal" Spacing="10" HorizontalAlignment="Right">
             <Button Classes="ghost" Content="Cancel" Command="{Binding CloseConnectHostSheetCommand}" />
             <Button Classes="primary" Content="Connect" Command="{Binding ConnectHostCommand}" />
+          </StackPanel>
+        </StackPanel>
+      </Border>
+    </Grid>
+
+    <!-- Site tools (Herd link / HTTPS) — gear icon -->
+    <Grid IsVisible="{Binding ShowSiteToolsSheet}" Background="#CC000000" ZIndex="30">
+      <Border Classes="modal" Width="480" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="22">
+        <StackPanel Spacing="14">
+          <TextBlock Text="Site tools" FontSize="20" FontWeight="SemiBold" />
+          <TextBlock Classes="muted" TextWrapping="Wrap"
+                     Text="These used to live as big buttons on Overview. They’re here now so Overview stays clean like Mac Sherpa." />
+          <Button Content="Link / park in Herd" Command="{Binding LinkHerdCommand}" HorizontalAlignment="Stretch" />
+          <Button Classes="primary" Content="Secure with HTTPS (Herd)" Command="{Binding SecureHerdCommand}" HorizontalAlignment="Stretch" />
+          <Button Content="Open folder" Command="{Binding OpenSiteFolderCommand}" HorizontalAlignment="Stretch" />
+          <Button Content="Open in browser" Command="{Binding OpenSiteUrlCommand}" HorizontalAlignment="Stretch" />
+          <StackPanel Orientation="Horizontal" Spacing="10" HorizontalAlignment="Right" Margin="0,8,0,0">
+            <Button Classes="ghost" Content="Close" Command="{Binding CloseSiteToolsCommand}" />
           </StackPanel>
         </StackPanel>
       </Border>

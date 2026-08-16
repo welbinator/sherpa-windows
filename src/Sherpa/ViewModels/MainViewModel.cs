@@ -48,6 +48,11 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty] private Site? selectedSite;
     [ObservableProperty] private int selectedNavIndex;
     [ObservableProperty] private int selectedDetailTab;
+    [ObservableProperty] private bool isDetailOverview = true;
+    [ObservableProperty] private bool isDetailPackages;
+    [ObservableProperty] private bool isDetailGit;
+    [ObservableProperty] private bool isDetailDeploy;
+    [ObservableProperty] private bool isDetailActivity;
     [ObservableProperty] private bool isSitesNav = true;
     [ObservableProperty] private bool isHostsNav;
     [ObservableProperty] private bool isSettingsNav;
@@ -58,6 +63,8 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty] private string installStatus = "";
     [ObservableProperty] private double installProgress; // 0-100
     [ObservableProperty] private bool installProgressIndeterminate;
+    [ObservableProperty] private bool showInstallDetails;
+    [ObservableProperty] private string installPhaseLabel = "";
     // Current install phase band — progress crawls inside [floor, ceil) on composer noise
     private double _installPhaseFloor;
     private double _installPhaseCeil = 100;
@@ -65,7 +72,10 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty] private string sitePreviewTitle = "Site preview";
     [ObservableProperty] private string sitePreviewSubtitle = "Create or select a site to see a preview.";
     [ObservableProperty] private string sitePreviewBadge = "";
-    [ObservableProperty] private string statusLine = "Sherpa for Windows · 0.2.6";
+    [ObservableProperty] private string sitePreviewBody = "Select a site to load a preview.";
+    [ObservableProperty] private string sitePreviewUrlLine = "";
+    [ObservableProperty] private bool sitePreviewIsError;
+    [ObservableProperty] private string statusLine = "Sherpa for Windows · 0.2.7";
     [ObservableProperty] private string runtimeStatus = "";
     [ObservableProperty] private string gitBranchLine = "";
     [ObservableProperty] private string gitLogText = "";
@@ -80,6 +90,7 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty] private bool showCreateUserSheet;
     [ObservableProperty] private bool showCommandsSheet;
     [ObservableProperty] private bool showConnectHostSheet;
+    [ObservableProperty] private bool showSiteToolsSheet;
     [ObservableProperty] private bool showDeleteConfirm;
     [ObservableProperty] private bool deleteSiteFilesToo;
     [ObservableProperty] private bool showToast;
@@ -163,6 +174,18 @@ public partial class MainViewModel : ViewModelBase
         if (value == 1) ReloadHosts();
     }
 
+    partial void OnSelectedDetailTabChanged(int value)
+    {
+        IsDetailOverview = value == 0;
+        IsDetailPackages = value == 1;
+        IsDetailGit = value == 2;
+        IsDetailDeploy = value == 3;
+        IsDetailActivity = value == 4;
+        if (value == 2) _ = RefreshGitAsync();
+        if (value == 0 && SelectedSite is not null && !IsInstallingSite)
+            _ = RefreshPreviewHttpAsync(SelectedSite);
+    }
+
     partial void OnSelectedSiteChanged(Site? value)
     {
         Deployments.Clear();
@@ -171,7 +194,11 @@ public partial class MainViewModel : ViewModelBase
                 Deployments.Add(d);
         UpdatePreviewForSite(value, IsInstallingSite && value is not null);
         if (!IsInstallingSite)
+        {
             _ = RefreshSitePanelsAsync();
+            if (value is not null && IsDetailOverview)
+                _ = RefreshPreviewHttpAsync(value);
+        }
     }
 
     partial void OnNewSiteNameChanged(string value) => RefreshNewSitePreviews();
@@ -629,18 +656,131 @@ public partial class MainViewModel : ViewModelBase
             SitePreviewTitle = "Site preview";
             SitePreviewSubtitle = "Create or select a site to see a preview.";
             SitePreviewBadge = "";
+            SitePreviewBody = "Select a site to load a preview.";
+            SitePreviewUrlLine = "";
+            SitePreviewIsError = false;
             return;
         }
         SitePreviewTitle = site.Name;
+        SitePreviewUrlLine = site.Url ?? "";
         if (installing)
         {
             SitePreviewSubtitle = site.Url ?? "Installing…";
             SitePreviewBadge = "Installing";
+            SitePreviewBody = "Site is installing…\n\nPreview will refresh when setup finishes.";
+            SitePreviewIsError = false;
+            InstallPhaseLabel = string.IsNullOrWhiteSpace(site.StartingPoint) ? "Installing" : site.StartingPoint;
         }
         else
         {
             SitePreviewSubtitle = site.Url ?? site.Path;
             SitePreviewBadge = site.Kind.ToString();
+            if (string.IsNullOrWhiteSpace(SitePreviewBody) || SitePreviewBody.StartsWith("Select a site", StringComparison.Ordinal))
+                SitePreviewBody = "Click Refresh preview to load this site.";
+        }
+    }
+
+    private async Task RefreshPreviewHttpAsync(Site site)
+    {
+        if (string.IsNullOrWhiteSpace(site.Url))
+        {
+            Ui(() =>
+            {
+                SitePreviewBody = "No URL set for this site yet.";
+                SitePreviewUrlLine = "";
+                SitePreviewIsError = true;
+            });
+            return;
+        }
+
+        Ui(() =>
+        {
+            SitePreviewUrlLine = site.Url;
+            SitePreviewBody = "Loading preview…";
+            SitePreviewIsError = false;
+        });
+
+        try
+        {
+            await _svc.Herd.EnsureRunningAsync(_ => { });
+            using var http = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(6) };
+            // Don't follow forever; we want the body even on error pages
+            using var res = await http.GetAsync(site.Url);
+            var body = await res.Content.ReadAsStringAsync();
+            // Prefer readable text; strip tags lightly for HTML success pages
+            var display = body;
+            if (display.Length > 12000)
+                display = display.Substring(0, 12000) + "\n…";
+
+            var looksHtml = display.Contains("<html", StringComparison.OrdinalIgnoreCase)
+                            || display.Contains("<!DOCTYPE", StringComparison.OrdinalIgnoreCase);
+            if (looksHtml && res.IsSuccessStatusCode)
+            {
+                // Pull title if present for a friendlier success preview
+                var title = "";
+                var m = System.Text.RegularExpressions.Regex.Match(display, "<title[^>]*>(.*?)</title>",
+                    System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Singleline);
+                if (m.Success) title = System.Net.WebUtility.HtmlDecode(m.Groups[1].Value.Trim());
+                display = string.IsNullOrWhiteSpace(title)
+                    ? $"HTTP {(int)res.StatusCode} OK\n\n{site.Url}\n\n(Page HTML loaded — open in browser for full render.)"
+                    : $"HTTP {(int)res.StatusCode} OK\n\n{title}\n{site.Url}\n\n(Page HTML loaded — open in browser for full render.)";
+            }
+
+            Ui(() =>
+            {
+                SitePreviewBadge = $"{(int)res.StatusCode}";
+                SitePreviewSubtitle = $"{site.Url} · HTTP {(int)res.StatusCode}";
+                SitePreviewBody = string.IsNullOrWhiteSpace(display) ? $"(empty response) HTTP {(int)res.StatusCode}" : display;
+                SitePreviewIsError = !res.IsSuccessStatusCode;
+                SitePreviewUrlLine = site.Url;
+            });
+        }
+        catch (Exception ex)
+        {
+            Ui(() =>
+            {
+                SitePreviewBadge = "Error";
+                SitePreviewSubtitle = site.Url + " · unreachable";
+                SitePreviewBody = "Could not load preview.\n\n" + ex.Message +
+                                  "\n\nTip: make sure Herd is running and the site is parked/linked.";
+                SitePreviewIsError = true;
+                SitePreviewUrlLine = site.Url;
+            });
+        }
+    }
+
+    [RelayCommand]
+    private void SetDetailTab(string? tab)
+    {
+        if (int.TryParse(tab, out var n))
+            SelectedDetailTab = Math.Clamp(n, 0, 4);
+    }
+
+    [RelayCommand]
+    private async Task RefreshPreviewAsync()
+    {
+        if (SelectedSite is null) return;
+        await RefreshPreviewHttpAsync(SelectedSite);
+    }
+
+    [RelayCommand]
+    private void OpenSiteTools() => ShowSiteToolsSheet = true;
+
+    [RelayCommand]
+    private void CloseSiteTools() => ShowSiteToolsSheet = false;
+
+    [RelayCommand]
+    private void ToggleInstallDetails() => ShowInstallDetails = !ShowInstallDetails;
+
+    [RelayCommand]
+    private void CopySitePath()
+    {
+        if (SelectedSite is null) return;
+        if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop
+            && desktop.MainWindow is not null)
+        {
+            _ = desktop.MainWindow.Clipboard?.SetTextAsync(SelectedSite.Path);
+            StatusLine = "Path copied.";
         }
     }
 
@@ -1043,31 +1183,6 @@ public partial class MainViewModel : ViewModelBase
                 });
             }
         });
-    }
-
-    private async Task RefreshPreviewHttpAsync(Site site)
-    {
-        if (string.IsNullOrWhiteSpace(site.Url)) return;
-        try
-        {
-            // Ensure Herd before probing local .test URL
-            await _svc.Herd.EnsureRunningAsync(AppendLog);
-            using var http = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(4) };
-            using var res = await http.GetAsync(site.Url);
-            Ui(() =>
-            {
-                SitePreviewBadge = $"{(int)res.StatusCode}";
-                SitePreviewSubtitle = $"{site.Url} · HTTP {(int)res.StatusCode}";
-            });
-        }
-        catch
-        {
-            Ui(() =>
-            {
-                SitePreviewBadge = "Local";
-                SitePreviewSubtitle = site.Url + " · open when Herd is ready";
-            });
-        }
     }
 
     [RelayCommand]
