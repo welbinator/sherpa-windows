@@ -2,37 +2,158 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              x:Class="Sherpa.App"
              RequestedThemeVariant="Dark">
+  <Application.Resources>
+    <Color x:Key="BgApp">#1C1C1E</Color>
+    <Color x:Key="BgSidebar">#141416</Color>
+    <Color x:Key="BgCard">#2C2C2E</Color>
+    <Color x:Key="BgCardElevated">#3A3A3C</Color>
+    <Color x:Key="BgInput">#3A3A3C</Color>
+    <Color x:Key="BorderSubtle">#3A3A3C</Color>
+    <Color x:Key="BorderSoft">#48484A</Color>
+    <Color x:Key="TextPrimary">#F5F5F7</Color>
+    <Color x:Key="TextMuted">#8E8E93</Color>
+    <Color x:Key="TextDim">#636366</Color>
+    <Color x:Key="Accent">#0A84FF</Color>
+    <Color x:Key="AccentHover">#409CFF</Color>
+    <Color x:Key="AccentPressed">#0070E0</Color>
+    <Color x:Key="Danger">#FF453A</Color>
+    <SolidColorBrush x:Key="BgAppBrush" Color="{StaticResource BgApp}" />
+    <SolidColorBrush x:Key="BgSidebarBrush" Color="{StaticResource BgSidebar}" />
+    <SolidColorBrush x:Key="BgCardBrush" Color="{StaticResource BgCard}" />
+    <SolidColorBrush x:Key="BgCardElevatedBrush" Color="{StaticResource BgCardElevated}" />
+    <SolidColorBrush x:Key="BgInputBrush" Color="{StaticResource BgInput}" />
+    <SolidColorBrush x:Key="BorderSubtleBrush" Color="{StaticResource BorderSubtle}" />
+    <SolidColorBrush x:Key="BorderSoftBrush" Color="{StaticResource BorderSoft}" />
+    <SolidColorBrush x:Key="TextPrimaryBrush" Color="{StaticResource TextPrimary}" />
+    <SolidColorBrush x:Key="TextMutedBrush" Color="{StaticResource TextMuted}" />
+    <SolidColorBrush x:Key="TextDimBrush" Color="{StaticResource TextDim}" />
+    <SolidColorBrush x:Key="AccentBrush" Color="{StaticResource Accent}" />
+    <SolidColorBrush x:Key="AccentHoverBrush" Color="{StaticResource AccentHover}" />
+    <SolidColorBrush x:Key="AccentPressedBrush" Color="{StaticResource AccentPressed}" />
+    <SolidColorBrush x:Key="DangerBrush" Color="{StaticResource Danger}" />
+  </Application.Resources>
+
   <Application.Styles>
     <FluentTheme />
+
     <Style Selector="Window">
-      <Setter Property="FontFamily" Value="Inter, Segoe UI, sans-serif" />
+      <Setter Property="FontFamily" Value="Inter, Segoe UI Variable, Segoe UI, sans-serif" />
+      <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+      <Setter Property="Background" Value="{StaticResource BgAppBrush}" />
     </Style>
+
     <Style Selector="TextBlock.h1">
       <Setter Property="FontSize" Value="22" />
       <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
     </Style>
     <Style Selector="TextBlock.muted">
-      <Setter Property="Foreground" Value="#9AA3B2" />
+      <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}" />
       <Setter Property="FontSize" Value="13" />
     </Style>
-    <Style Selector="TextBlock.advice-title">
-      <Setter Property="FontWeight" Value="SemiBold" />
-      <Setter Property="FontSize" Value="13" />
+    <Style Selector="TextBlock.dim">
+      <Setter Property="Foreground" Value="{StaticResource TextDimBrush}" />
+      <Setter Property="FontSize" Value="12" />
     </Style>
+
+    <!-- Cards -->
     <Style Selector="Border.card">
-      <Setter Property="Background" Value="#161A22" />
-      <Setter Property="CornerRadius" Value="10" />
-      <Setter Property="Padding" Value="14" />
-      <Setter Property="BorderBrush" Value="#2A3140" />
+      <Setter Property="Background" Value="{StaticResource BgCardBrush}" />
+      <Setter Property="CornerRadius" Value="12" />
+      <Setter Property="Padding" Value="16" />
+      <Setter Property="BorderBrush" Value="{StaticResource BorderSubtleBrush}" />
       <Setter Property="BorderThickness" Value="1" />
     </Style>
-    <Style Selector="Border.sidebar">
-      <Setter Property="Background" Value="#0F1218" />
+    <Style Selector="Border.modal">
+      <Setter Property="Background" Value="#2C2C2E" />
+      <Setter Property="CornerRadius" Value="14" />
+      <Setter Property="BorderBrush" Value="#3A3A3C" />
+      <Setter Property="BorderThickness" Value="1" />
     </Style>
-    <Style Selector="ListBox.nav ListBoxItem">
-      <Setter Property="Padding" Value="12,10" />
-      <Setter Property="Margin" Value="8,2" />
+
+    <!-- Default buttons = secondary (dark chip) -->
+    <Style Selector="Button">
+      <Setter Property="Background" Value="#3A3A3C" />
+      <Setter Property="Foreground" Value="#F5F5F7" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
       <Setter Property="CornerRadius" Value="8" />
+      <Setter Property="Padding" Value="14,8" />
+      <Setter Property="FontSize" Value="13" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Button:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="#48484A" />
+    </Style>
+    <Style Selector="Button:pressed /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="#636366" />
+    </Style>
+    <Style Selector="Button:disabled">
+      <Setter Property="Opacity" Value="0.45" />
+    </Style>
+
+    <!-- Primary blue (Mac Continue / New Site) -->
+    <Style Selector="Button.primary">
+      <Setter Property="Background" Value="{StaticResource AccentBrush}" />
+      <Setter Property="Foreground" Value="White" />
+    </Style>
+    <Style Selector="Button.primary:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{StaticResource AccentHoverBrush}" />
+    </Style>
+    <Style Selector="Button.primary:pressed /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{StaticResource AccentPressedBrush}" />
+    </Style>
+
+    <!-- Quiet / ghost -->
+    <Style Selector="Button.ghost">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}" />
+    </Style>
+    <Style Selector="Button.ghost:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="#22FFFFFF" />
+    </Style>
+
+    <!-- Danger -->
+    <Style Selector="Button.danger">
+      <Setter Property="Background" Value="#3A2020" />
+      <Setter Property="Foreground" Value="#FF8A80" />
+    </Style>
+    <Style Selector="Button.danger:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="#4A2828" />
+    </Style>
+
+    <!-- Chip filters -->
+    <Style Selector="Button.chip">
+      <Setter Property="Background" Value="#3A3A3C" />
+      <Setter Property="Padding" Value="12,6" />
+      <Setter Property="CornerRadius" Value="16" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="FontSize" Value="12" />
+    </Style>
+    <Style Selector="Button.chip-on">
+      <Setter Property="Background" Value="{StaticResource AccentBrush}" />
+      <Setter Property="Foreground" Value="White" />
+      <Setter Property="Padding" Value="12,6" />
+      <Setter Property="CornerRadius" Value="16" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="FontSize" Value="12" />
+    </Style>
+
+    <!-- Text inputs -->
+    <Style Selector="TextBox">
+      <Setter Property="Background" Value="#3A3A3C" />
+      <Setter Property="Foreground" Value="#F5F5F7" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="CornerRadius" Value="8" />
+      <Setter Property="Padding" Value="10,8" />
+      <Setter Property="MinHeight" Value="36" />
+    </Style>
+    <Style Selector="TextBox:focus">
+      <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
     </Style>
     <Style Selector="TextBox.log">
       <Setter Property="FontFamily" Value="Cascadia Mono, Consolas, monospace" />
@@ -40,6 +161,142 @@
       <Setter Property="AcceptsReturn" Value="True" />
       <Setter Property="TextWrapping" Value="Wrap" />
       <Setter Property="IsReadOnly" Value="True" />
+      <Setter Property="Background" Value="#1C1C1E" />
+    </Style>
+
+    <!-- Toggle switches -->
+    <Style Selector="ToggleSwitch">
+      <Setter Property="OnContent" Value="{x:Null}" />
+      <Setter Property="OffContent" Value="{x:Null}" />
+      <Setter Property="HorizontalAlignment" Value="Right" />
+    </Style>
+
+    <!-- Progress -->
+    <Style Selector="ProgressBar">
+      <Setter Property="Height" Value="6" />
+      <Setter Property="MinHeight" Value="6" />
+      <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
+      <Setter Property="Background" Value="#3A3A3C" />
+      <Setter Property="CornerRadius" Value="3" />
+    </Style>
+
+    <!-- Sidebar nav list -->
+    <Style Selector="ListBox.nav">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+    </Style>
+    <Style Selector="ListBox.nav ListBoxItem">
+      <Setter Property="Padding" Value="12,10" />
+      <Setter Property="Margin" Value="10,2" />
+      <Setter Property="CornerRadius" Value="8" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="FontSize" Value="13" />
+    </Style>
+    <Style Selector="ListBox.nav ListBoxItem:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#22FFFFFF" />
+    </Style>
+    <Style Selector="ListBox.nav ListBoxItem:selected /template/ ContentPresenter">
+      <Setter Property="Background" Value="{StaticResource AccentBrush}" />
+      <Setter Property="Foreground" Value="White" />
+    </Style>
+    <Style Selector="ListBox.nav ListBoxItem:selected">
+      <Setter Property="Foreground" Value="White" />
+    </Style>
+
+    <!-- Site list under nav -->
+    <Style Selector="ListBox.sites">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+    </Style>
+    <Style Selector="ListBox.sites ListBoxItem">
+      <Setter Property="Padding" Value="10,8" />
+      <Setter Property="Margin" Value="8,2" />
+      <Setter Property="CornerRadius" Value="8" />
+      <Setter Property="Background" Value="Transparent" />
+    </Style>
+    <Style Selector="ListBox.sites ListBoxItem:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#18FFFFFF" />
+    </Style>
+    <Style Selector="ListBox.sites ListBoxItem:selected /template/ ContentPresenter">
+      <Setter Property="Background" Value="#28FFFFFF" />
+    </Style>
+
+    <!-- Kit grid -->
+    <Style Selector="ListBox.kit-grid">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled" />
+      <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Auto" />
+    </Style>
+    <Style Selector="ListBox.kit-grid ListBoxItem">
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="Margin" Value="6" />
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+      <Setter Property="VerticalContentAlignment" Value="Stretch" />
+      <Setter Property="Background" Value="Transparent" />
+    </Style>
+    <Style Selector="ListBox.kit-grid ListBoxItem:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="Transparent" />
+    </Style>
+    <Style Selector="ListBox.kit-grid ListBoxItem:selected /template/ ContentPresenter">
+      <Setter Property="Background" Value="Transparent" />
+    </Style>
+    <Style Selector="ListBox.kit-grid ListBoxItem Border.kit-card">
+      <Setter Property="Background" Value="#1C1C1E" />
+      <Setter Property="BorderBrush" Value="#3A3A3C" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="12" />
+      <Setter Property="Padding" Value="14" />
+      <Setter Property="MinHeight" Value="148" />
+    </Style>
+    <Style Selector="ListBox.kit-grid ListBoxItem:pointerover Border.kit-card">
+      <Setter Property="BorderBrush" Value="#636366" />
+      <Setter Property="Background" Value="#252528" />
+    </Style>
+    <Style Selector="ListBox.kit-grid ListBoxItem:selected Border.kit-card">
+      <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+      <Setter Property="BorderThickness" Value="2" />
+      <Setter Property="Background" Value="#152238" />
+    </Style>
+
+    <!-- TabControl — pill strip feel -->
+    <Style Selector="TabControl">
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="Background" Value="Transparent" />
+    </Style>
+    <Style Selector="TabItem">
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="FontSize" Value="13" />
+      <Setter Property="Margin" Value="0,0,4,0" />
+      <Setter Property="Padding" Value="14,8" />
+      <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}" />
+    </Style>
+    <Style Selector="TabItem:selected">
+      <Setter Property="Foreground" Value="White" />
+    </Style>
+
+    <!-- Checkboxes muted -->
+    <Style Selector="CheckBox">
+      <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+    </Style>
+    <Style Selector="RadioButton">
+      <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+    </Style>
+
+    <!-- Scrollbars subtle -->
+    <Style Selector="ScrollViewer">
+      <Setter Property="HorizontalScrollBarVisibility" Value="Disabled" />
+      <Setter Property="VerticalScrollBarVisibility" Value="Auto" />
+    </Style>
+
+    <!-- Form row helper -->
+    <Style Selector="Border.form-row">
+      <Setter Property="Padding" Value="0,10" />
+      <Setter Property="BorderBrush" Value="#22FFFFFF" />
+      <Setter Property="BorderThickness" Value="0,0,0,1" />
     </Style>
   </Application.Styles>
 </Application>

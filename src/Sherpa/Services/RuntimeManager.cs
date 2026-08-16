@@ -63,6 +63,35 @@ public sealed class RuntimeManager
         return $"PHP: {Mark(FindPhp())}\nComposer: {Mark(FindComposer())}\nGit: {Mark(FindGit())}\nnpm: {Mark(FindNpm())}\nHerd: {Mark(FindHerd())}";
     }
 
+    /// <summary>Best-effort short version string from `php -v` (e.g. "8.3.12").</summary>
+    public string? TryGetPhpVersion()
+    {
+        var php = FindPhp();
+        if (php is null) return null;
+        try
+        {
+            var psi = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = php,
+                ArgumentList = { "-r", "echo PHP_VERSION;" },
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            using var p = System.Diagnostics.Process.Start(psi);
+            if (p is null) return null;
+            var output = p.StandardOutput.ReadToEnd();
+            p.WaitForExit(4000);
+            var v = output.Trim();
+            return string.IsNullOrWhiteSpace(v) ? null : v.Split('-')[0].Trim();
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     private static IEnumerable<string> CandidatePhp()
     {
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);

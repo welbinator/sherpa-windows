@@ -65,7 +65,7 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty] private string sitePreviewTitle = "Site preview";
     [ObservableProperty] private string sitePreviewSubtitle = "Create or select a site to see a preview.";
     [ObservableProperty] private string sitePreviewBadge = "";
-    [ObservableProperty] private string statusLine = "Sherpa for Windows · 0.2.5";
+    [ObservableProperty] private string statusLine = "Sherpa for Windows · 0.2.6";
     [ObservableProperty] private string runtimeStatus = "";
     [ObservableProperty] private string gitBranchLine = "";
     [ObservableProperty] private string gitLogText = "";
@@ -101,10 +101,16 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty] private bool wizardIsStorage;
     [ObservableProperty] private bool wizardIsOptions;
     [ObservableProperty] private string wizardTitle = "New Site";
+    [ObservableProperty] private string wizardSubtitle = "Name the site and choose where it lives.";
+    [ObservableProperty] private double wizardModalWidth = 720;
+    [ObservableProperty] private double wizardModalHeight = 620;
     [ObservableProperty] private bool wizardCanGoBack;
     [ObservableProperty] private bool wizardCanGoNext = true;
     [ObservableProperty] private string kitSearch = "";
     [ObservableProperty] private int kitPriceFilter; // 0 all 1 free 2 paid
+    [ObservableProperty] private bool kitFilterIsAll = true;
+    [ObservableProperty] private bool kitFilterIsFree;
+    [ObservableProperty] private bool kitFilterIsPaid;
     [ObservableProperty] private bool kitsLoading;
     [ObservableProperty] private string kitsStatus = "";
     [ObservableProperty] private StarterKitRow? selectedKit;
@@ -123,6 +129,8 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty] private string superUserName = "";
     [ObservableProperty] private string superUserEmail = "";
     [ObservableProperty] private string superUserPassword = "";
+    [ObservableProperty] private string runtimePhpLine = "PHP will be detected from Herd";
+    [ObservableProperty] private string runtimePhpDetail = "Open Settings if you need to set a custom PHP path.";
 
     [ObservableProperty] private string importPath = "";
     [ObservableProperty] private string defaultSitesFolder = "";
@@ -145,7 +153,7 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty] private bool createUserSuper = true;
     [ObservableProperty] private string customCommand = "";
     [ObservableProperty] private string emptyTitle = "Create your first site";
-    [ObservableProperty] private string emptyBody = "Create a new Statamic site, or import a folder you already have.";
+    [ObservableProperty] private string emptyBody = "Sherpa sets up Statamic and handles Composer for you.";
 
     partial void OnSelectedNavIndexChanged(int value)
     {
@@ -178,18 +186,43 @@ public partial class MainViewModel : ViewModelBase
         WizardIsOptions = value == 3;
         WizardTitle = value switch
         {
-            0 => "New Site",
+            0 => "New Statamic Site",
             1 => "Starter kit",
             2 => "Content storage",
             3 => "Options",
             _ => "New Site",
         };
+        WizardSubtitle = value switch
+        {
+            0 => "Name the site and choose where it lives.",
+            1 => "Start blank or pick a Marketplace starter kit.",
+            2 => "Where should content and data live?",
+            3 => "Last step before install.",
+            _ => "",
+        };
+        // Kits step gets a much larger modal so the 3-column grid has room
+        if (value == 1)
+        {
+            WizardModalWidth = 980;
+            WizardModalHeight = 740;
+        }
+        else
+        {
+            WizardModalWidth = 720;
+            WizardModalHeight = 620;
+        }
         WizardCanGoBack = value > 0;
         WizardCanGoNext = value < 3;
     }
 
     partial void OnKitSearchChanged(string value) => ApplyKitFilter();
-    partial void OnKitPriceFilterChanged(int value) => ApplyKitFilter();
+    partial void OnKitPriceFilterChanged(int value)
+    {
+        KitFilterIsAll = value == 0;
+        KitFilterIsFree = value == 1;
+        KitFilterIsPaid = value == 2;
+        ApplyKitFilter();
+    }
 
     partial void OnStorageFlatFilesChanged(bool value)
     {
@@ -369,7 +402,7 @@ public partial class MainViewModel : ViewModelBase
         if (Sites.Count == 0)
         {
             EmptyTitle = "Create your first site";
-            EmptyBody = "Create a new Statamic site, or import a folder you already have.";
+            EmptyBody = "Sherpa sets up Statamic and handles Composer for you.";
         }
         else
         {
@@ -408,7 +441,24 @@ public partial class MainViewModel : ViewModelBase
         ReloadHosts();
     }
 
-    private void RefreshRuntimeStatus() => RuntimeStatus = _svc.Runtime.StatusSummary();
+    private void RefreshRuntimeStatus()
+    {
+        RuntimeStatus = _svc.Runtime.StatusSummary();
+        var php = _svc.Runtime.FindPhp();
+        if (php is null)
+        {
+            RuntimePhpLine = "PHP not found yet";
+            RuntimePhpDetail = "Install Laravel Herd (or set a PHP path under Settings) before creating a site.";
+        }
+        else
+        {
+            var ver = _svc.Runtime.TryGetPhpVersion() ?? "unknown";
+            RuntimePhpLine = $"Will install with PHP {ver}";
+            RuntimePhpDetail = php.Contains("Herd", StringComparison.OrdinalIgnoreCase)
+                ? $"Matches Herd · {ver}"
+                : php;
+        }
+    }
 
     private void Ui(Action action)
     {
@@ -702,6 +752,7 @@ public partial class MainViewModel : ViewModelBase
     private async Task OpenNewSiteWizard()
     {
         ResetNewSiteForm();
+        RefreshRuntimeStatus();
         ShowNewSiteWizard = true;
         await LoadKitsIfNeededAsync();
     }
