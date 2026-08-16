@@ -9,10 +9,10 @@
     <ApplicationIcon>Assets/sherpa.ico</ApplicationIcon>
     <RootNamespace>Sherpa</RootNamespace>
     <AssemblyName>Sherpa</AssemblyName>
-    <Version>0.3.3</Version>
-    <AssemblyVersion>0.3.3.0</AssemblyVersion>
-    <FileVersion>0.3.3.0</FileVersion>
-    <InformationalVersion>0.3.3+rollback</InformationalVersion>
+    <Version>0.3.4</Version>
+    <AssemblyVersion>0.3.4.0</AssemblyVersion>
+    <FileVersion>0.3.4.0</FileVersion>
+    <InformationalVersion>0.3.4+browser-icon</InformationalVersion>
     <Product>Sherpa</Product>
     <Company>Sherpa</Company>
     <Authors>welbinator</Authors>
@@ -39,6 +39,7 @@
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.3.2" />
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
     <PackageReference Include="System.Text.Json" Version="8.0.5" />
+    <PackageReference Include="Microsoft.Win32.Registry" Version="5.0.0" />
     <PackageReference Include="Velopack" Version="1.2.0" />
     <!-- Real browser preview (WebView2 on Windows). Free FOSS stack — not Avalonia Accelerate. -->
     <PackageReference Include="WebView.Avalonia" Version="11.0.0.1" />

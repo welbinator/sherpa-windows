@@ -33,6 +33,7 @@ public partial class MainViewModel : ViewModelBase
         ReloadSites();
         RefreshRuntimeStatus();
         ResetNewSiteForm();
+        RefreshDefaultBrowserIcon();
         RefreshUpdateStatus();
         // Quiet background check after install — only when Velopack-installed
         _ = QuietStartupUpdateCheckAsync();
@@ -83,8 +84,11 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty] private string previewUrl = "";
     /// <summary>Bumped to force the WebView to reload even when the URL is unchanged.</summary>
     [ObservableProperty] private int previewReloadToken;
-    [ObservableProperty] private string statusLine = "Sherpa for Windows · 0.3.3";
+    [ObservableProperty] private string statusLine = "Sherpa for Windows · 0.3.4";
     [ObservableProperty] private string runtimeStatus = "";
+    /// <summary>Monochrome Path.Data for the open-in-browser toolbar icon (Chrome / Firefox / Edge / generic).</summary>
+    [ObservableProperty] private string browserIconPathData = DefaultBrowserDetector.IconPathData(DefaultBrowserKind.Generic);
+    [ObservableProperty] private string openInBrowserTooltip = DefaultBrowserDetector.OpenTooltip(DefaultBrowserKind.Generic);
     [ObservableProperty] private string updateStatus = "";
     [ObservableProperty] private string updateVersionLine = "";
     [ObservableProperty] private bool updateIsBusy;
@@ -579,6 +583,21 @@ public partial class MainViewModel : ViewModelBase
             RuntimePhpDetail = php.Contains("Herd", StringComparison.OrdinalIgnoreCase)
                 ? $"Matches Herd · {ver}"
                 : php;
+        }
+    }
+
+    private void RefreshDefaultBrowserIcon()
+    {
+        try
+        {
+            var kind = DefaultBrowserDetector.Detect();
+            BrowserIconPathData = DefaultBrowserDetector.IconPathData(kind);
+            OpenInBrowserTooltip = DefaultBrowserDetector.OpenTooltip(kind);
+        }
+        catch
+        {
+            BrowserIconPathData = DefaultBrowserDetector.IconPathData(DefaultBrowserKind.Generic);
+            OpenInBrowserTooltip = DefaultBrowserDetector.OpenTooltip(DefaultBrowserKind.Generic);
         }
     }
 
@@ -1332,6 +1351,7 @@ public partial class MainViewModel : ViewModelBase
     private async Task OpenSiteUrlAsync()
     {
         if (SelectedSite?.Url is null) return;
+        RefreshDefaultBrowserIcon();
         StatusLine = "Checking Herd…";
         var (ok, msg) = await _svc.Herd.EnsureRunningAsync(AppendLog);
         if (!ok)
