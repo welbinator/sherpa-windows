@@ -9,10 +9,10 @@
     <ApplicationIcon>Assets/sherpa.ico</ApplicationIcon>
     <RootNamespace>Sherpa</RootNamespace>
     <AssemblyName>Sherpa</AssemblyName>
-    <Version>0.3.4</Version>
-    <AssemblyVersion>0.3.4.0</AssemblyVersion>
-    <FileVersion>0.3.4.0</FileVersion>
-    <InformationalVersion>0.3.4+browser-icon</InformationalVersion>
+    <Version>0.3.5</Version>
+    <AssemblyVersion>0.3.5.0</AssemblyVersion>
+    <FileVersion>0.3.5.0</FileVersion>
+    <InformationalVersion>0.3.5+cf-static-deploy</InformationalVersion>
     <Product>Sherpa</Product>
     <Company>Sherpa</Company>
     <Authors>welbinator</Authors>

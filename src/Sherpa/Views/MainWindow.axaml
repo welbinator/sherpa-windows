@@ -340,20 +340,78 @@
                     <StackPanel Spacing="10">
                       <TextBlock Text="Deploy" FontWeight="SemiBold" />
                       <TextBlock Classes="muted" TextWrapping="Wrap"
-                                 Text="Laravel Cloud for dynamic sites. Netlify or Cloudflare Pages for static SSG. Connect hosts first — tokens stay in the secret store." />
-                      <Button Content="Check deploy prerequisites" Command="{Binding DeployPrerequisiteCheckCommand}" HorizontalAlignment="Left" />
-                      <Button Content="Back up to GitHub first" Command="{Binding BackupToGitHubCommand}" HorizontalAlignment="Left" />
-                      <Button Classes="primary" Content="Connect a New Host" Command="{Binding OpenConnectHostSheetCommand}" HorizontalAlignment="Left" />
+                                 Text="Two different goals: (1) Static site — HTML files on Cloudflare Pages; edit locally, rebuild to update; no live control panel on the web. (2) Full Statamic app — PHP host with login from anywhere (Forge / Laravel Cloud — coming next)." />
                     </StackPanel>
                   </Border>
+
+                  <Border Classes="card">
+                    <StackPanel Spacing="10">
+                      <TextBlock Text="Publish static site → Cloudflare Pages" FontWeight="SemiBold" />
+                      <TextBlock Classes="muted" TextWrapping="Wrap" FontSize="12"
+                                 Text="Builds the site (npm + php please ssg:generate), then uploads storage/app/static with Wrangler. Needs Node/npx, PHP, and a connected Cloudflare account." />
+
+                      <TextBlock Text="Cloudflare account" Classes="muted" FontSize="12" />
+                      <ComboBox ItemsSource="{Binding CloudflareHosts}"
+                                SelectedItem="{Binding SelectedCloudflareHost}"
+                                MinHeight="36"
+                                HorizontalAlignment="Stretch"
+                                PlaceholderText="Connect Cloudflare under Hosts…">
+                        <ComboBox.ItemTemplate>
+                          <DataTemplate x:DataType="models:HostAccount">
+                            <TextBlock Text="{Binding Label}" />
+                          </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                      </ComboBox>
+
+                      <TextBlock Text="Pages project name" Classes="muted" FontSize="12" Margin="0,4,0,0" />
+                      <TextBox Watermark="my-site" Text="{Binding CloudflareProjectName}" />
+                      <TextBlock Classes="dim" FontSize="11" TextWrapping="Wrap"
+                                 Text="Lowercase letters, numbers, hyphens. Created automatically if it doesn’t exist. Live URL will be https://name.pages.dev" />
+
+                      <StackPanel Orientation="Horizontal" Spacing="10" Margin="0,4,0,0">
+                        <ToggleSwitch IsChecked="{Binding CloudflareRegenerate}" OffContent="Skip rebuild" OnContent="Regenerate static files" />
+                      </StackPanel>
+
+                      <TextBlock Text="{Binding DeployStatus}" Classes="muted" TextWrapping="Wrap" />
+
+                      <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button Classes="primary" Content="Publish to Cloudflare"
+                                Command="{Binding PublishToCloudflareCommand}"
+                                IsEnabled="{Binding CanPublishToCloudflare}" />
+                        <Button Content="Check prerequisites"
+                                Command="{Binding DeployPrerequisiteCheckCommand}"
+                                IsEnabled="{Binding !DeployIsBusy}" />
+                        <Button Content="Open live site"
+                                Command="{Binding OpenLastDeployUrlCommand}"
+                                IsVisible="{Binding LastDeployUrl, Converter={x:Static ObjectConverters.IsNotNull}}" />
+                        <Button Content="Connect Cloudflare…"
+                                Command="{Binding OpenConnectHostSheetCommand}" />
+                      </StackPanel>
+
+                      <ProgressBar IsIndeterminate="{Binding DeployIsBusy}" Height="6" IsVisible="{Binding DeployIsBusy}" />
+                      <TextBox IsVisible="{Binding DeployLog, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                               Classes="log" Text="{Binding DeployLog}" MinHeight="120" IsReadOnly="True" />
+                    </StackPanel>
+                  </Border>
+
                   <Border Classes="card">
                     <StackPanel Spacing="8">
                       <TextBlock Text="Deployment history" FontWeight="SemiBold" />
-                      <TextBlock Classes="muted" Text="No deploys yet." />
+                      <TextBlock Classes="muted"
+                                 IsVisible="{Binding Deployments.Count}"
+                                 Text="Recent publishes for this site." />
+                      <TextBlock Classes="muted" Text="No publishes yet."
+                                 IsVisible="{Binding !Deployments.Count}" />
                       <ItemsControl ItemsSource="{Binding Deployments}">
                         <ItemsControl.ItemTemplate>
                           <DataTemplate x:DataType="models:DeploymentRecord">
-                            <TextBlock Margin="0,4" Text="{Binding Summary}" />
+                            <Border Margin="0,0,0,8" Padding="10,8" Background="#22FFFFFF" CornerRadius="8">
+                              <StackPanel Spacing="2">
+                                <TextBlock Text="{Binding Summary}" TextWrapping="Wrap" />
+                                <TextBlock Classes="dim" FontSize="11"
+                                           Text="{Binding At}" />
+                              </StackPanel>
+                            </Border>
                           </DataTemplate>
                         </ItemsControl.ItemTemplate>
                       </ItemsControl>

@@ -84,7 +84,7 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty] private string previewUrl = "";
     /// <summary>Bumped to force the WebView to reload even when the URL is unchanged.</summary>
     [ObservableProperty] private int previewReloadToken;
-    [ObservableProperty] private string statusLine = "Sherpa for Windows · 0.3.4";
+    [ObservableProperty] private string statusLine = "Sherpa for Windows · 0.3.5";
     [ObservableProperty] private string runtimeStatus = "";
     /// <summary>Monochrome Path.Data for the open-in-browser toolbar icon (Chrome / Firefox / Edge / generic).</summary>
     [ObservableProperty] private string browserIconPathData = DefaultBrowserDetector.IconPathData(DefaultBrowserKind.Generic);
@@ -100,6 +100,15 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty] private bool rollbackCanApply;
     [ObservableProperty] private RollbackRelease? selectedRollbackRelease;
     public ObservableCollection<RollbackRelease> PreviousReleases { get; } = new();
+    public ObservableCollection<HostAccount> CloudflareHosts { get; } = new();
+    [ObservableProperty] private HostAccount? selectedCloudflareHost;
+    [ObservableProperty] private string cloudflareProjectName = "";
+    [ObservableProperty] private bool cloudflareRegenerate = true;
+    [ObservableProperty] private string deployStatus = "";
+    [ObservableProperty] private bool deployIsBusy;
+    [ObservableProperty] private string deployLog = "";
+    [ObservableProperty] private string? lastDeployUrl;
+    [ObservableProperty] private bool canPublishToCloudflare;
     [ObservableProperty] private string gitBranchLine = "";
     [ObservableProperty] private string gitLogText = "";
     [ObservableProperty] private string gitCommitMessage = "Update";
@@ -210,6 +219,7 @@ public partial class MainViewModel : ViewModelBase
         IsDetailDeploy = value == 3;
         IsDetailActivity = value == 4;
         if (value == 2) _ = RefreshGitAsync();
+        if (value == 3) RefreshDeployPanel();
         if (value == 0 && SelectedSite is not null && !IsInstallingSite)
             _ = RefreshPreviewHttpAsync(SelectedSite);
     }
@@ -221,6 +231,7 @@ public partial class MainViewModel : ViewModelBase
             foreach (var d in value.Deployments.OrderByDescending(x => x.At))
                 Deployments.Add(d);
         UpdatePreviewForSite(value, IsInstallingSite && value is not null);
+        RefreshDeployPanel();
         if (!IsInstallingSite)
         {
             _ = RefreshSitePanelsAsync();
@@ -541,9 +552,65 @@ public partial class MainViewModel : ViewModelBase
     private void ReloadHosts()
     {
         HostAccounts.Clear();
+        CloudflareHosts.Clear();
         foreach (var h in _svc.Preferences.Load().Hosts)
+        {
             HostAccounts.Add(h);
+            if (h.Provider == HostProviderKind.CloudflarePages)
+                CloudflareHosts.Add(h);
+        }
+
+        if (SelectedCloudflareHost is not null
+            && CloudflareHosts.All(h => h.Id != SelectedCloudflareHost.Id))
+        {
+            SelectedCloudflareHost = null;
+        }
+
+        if (SelectedCloudflareHost is null && CloudflareHosts.Count > 0)
+            SelectedCloudflareHost = CloudflareHosts[0];
+
+        RefreshDeployPanel();
     }
+
+    private void RefreshDeployPanel()
+    {
+        var site = SelectedSite;
+        if (site is not null)
+        {
+            if (string.IsNullOrWhiteSpace(CloudflareProjectName)
+                || CloudflareProjectName == _lastDeployProjectSeed)
+            {
+                var seed = !string.IsNullOrWhiteSpace(site.CloudflarePagesProject)
+                    ? site.CloudflarePagesProject!
+                    : Clients.CloudflarePagesClient.SanitizeProjectName(site.Name);
+                CloudflareProjectName = seed;
+                _lastDeployProjectSeed = seed;
+            }
+
+            LastDeployUrl = site.ProductionUrl;
+        }
+        else
+        {
+            LastDeployUrl = null;
+        }
+
+        CanPublishToCloudflare = site is not null
+                                 && SelectedCloudflareHost is not null
+                                 && !string.IsNullOrWhiteSpace(CloudflareProjectName)
+                                 && !DeployIsBusy;
+
+        if (string.IsNullOrWhiteSpace(DeployStatus))
+        {
+            if (site is null)
+                DeployStatus = "Pick a site first.";
+            else if (CloudflareHosts.Count == 0)
+                DeployStatus = "Connect Cloudflare Pages under Hosts (API token + account ID), then come back here.";
+            else
+                DeployStatus = "Static publish builds HTML files, then uploads them to Cloudflare Pages. Control panel stays on this computer.";
+        }
+    }
+
+    private string _lastDeployProjectSeed = "";
 
     private void PersistSites() => _svc.Sites.Save(Sites);
 
@@ -1018,7 +1085,7 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand] private void CloseCreateUserSheet() => ShowCreateUserSheet = false;
     [RelayCommand] private void OpenCommandsSheet() { CustomCommand = ""; ShowCommandsSheet = true; }
     [RelayCommand] private void CloseCommandsSheet() => ShowCommandsSheet = false;
-    [RelayCommand] private void OpenConnectHostSheet() { HostTokenInput = ""; HostExtraInput = ""; HostLabelInput = ""; ConnectHostStatus = ""; ConnectHostKind = 1; ShowConnectHostSheet = true; }
+    [RelayCommand] private void OpenConnectHostSheet() { HostTokenInput = ""; HostExtraInput = ""; HostLabelInput = ""; ConnectHostStatus = ""; ConnectHostKind = 3; ShowConnectHostSheet = true; }
     [RelayCommand] private void CloseConnectHostSheet() => ShowConnectHostSheet = false;
     [RelayCommand] private void DismissToast() => ShowToast = false;
     [RelayCommand] private void CancelDelete() => ShowDeleteConfirm = false;
@@ -2025,35 +2092,193 @@ public partial class MainViewModel : ViewModelBase
     }
 
     [RelayCommand]
-    private async Task DeployPrerequisiteCheckAsync()
+    private async Task PublishToCloudflareAsync()
     {
-        ClearLog();
-        if (SelectedSite is null) { AppendLog("Pick a site from the list, or create a new one."); return; }
-        var p = _svc.Preferences.Load();
-        var hasDynamic = p.Hosts.Any(h => h.Provider is HostProviderKind.Forge or HostProviderKind.LaravelCloud);
-        var hasStatic = p.Hosts.Any(h => h.Provider is HostProviderKind.CloudflarePages or HostProviderKind.Netlify);
-        if (!_svc.Secrets.Has("github"))
+        if (DeployIsBusy) return;
+        if (SelectedSite is null)
         {
-            AppendLog("Add a GitHub token in Settings first.");
-            ShowAdviceFrom("Add a GitHub token in Settings first.");
+            DeployStatus = "Pick a site first.";
             return;
         }
-        if (!hasDynamic && !hasStatic)
+
+        if (SelectedCloudflareHost is null)
         {
-            AppendLog("Connect a New Host under Hosts first.");
-            AppendLog("Laravel Cloud for dynamic Statamic sites. Netlify or Cloudflare Pages for static SSG deploys.");
-            AppendLog("Or Connect Forge first.");
-            ShowAdviceFrom("Connect Netlify or Cloudflare Pages under Hosts first.");
+            DeployStatus = "Connect Cloudflare Pages under Hosts first (API token + account ID).";
             SelectedNavIndex = 1;
             return;
         }
-        AppendLog("Prerequisites look good for the host accounts you connected.");
-        AppendLog("Full one-click Forge / Cloud / static publish wizards use these same accounts — ship the site from Deploy when the wizard finishes running.");
-        AppendLog("Your site path: " + SelectedSite.Path);
-        if (hasDynamic) AppendLog("Dynamic hosting: Forge / Laravel Cloud ready.");
-        if (hasStatic) AppendLog("Static hosting: Cloudflare Pages / Netlify ready.");
-        StatusLine = "Hosts connected.";
+
+        var project = CloudflareProjectName.Trim();
+        if (string.IsNullOrWhiteSpace(project))
+        {
+            DeployStatus = "Enter a Cloudflare Pages project name.";
+            return;
+        }
+
+        DeployIsBusy = true;
+        CanPublishToCloudflare = false;
+        DeployLog = "";
+        DeployStatus = "Publishing static site to Cloudflare Pages…";
+        ClearLog();
+        AppendLog("Publish static site → Cloudflare Pages");
+        AppendLog("Site: " + SelectedSite.Path);
+        AppendLog("Project: " + project);
+        SelectedDetailTab = 3;
+
+        try
+        {
+            var site = SelectedSite;
+            var host = SelectedCloudflareHost;
+            var regenerate = CloudflareRegenerate;
+
+            var result = await _svc.StaticPublish.PublishToCloudflareAsync(
+                site,
+                host,
+                project,
+                regenerate,
+                line => Ui(() =>
+                {
+                    AppendLog(line);
+                    DeployLog = DeployLog + line + Environment.NewLine;
+                    DeployStatus = line;
+                }));
+
+            DeployStatus = result.Message;
+            StatusLine = result.Message;
+            AppendLog(result.Message);
+
+            var record = new DeploymentRecord
+            {
+                At = DateTimeOffset.Now,
+                Host = "Cloudflare Pages",
+                Status = result.Ok ? "Published" : "Failed",
+                Summary = result.Ok
+                    ? $"Published to {result.ProductionUrl ?? result.ProjectName}"
+                    : result.Message,
+                Url = result.ProductionUrl,
+            };
+            site.Deployments.Insert(0, record);
+            // keep history short
+            if (site.Deployments.Count > 30)
+                site.Deployments = site.Deployments.Take(30).ToList();
+
+            if (result.Ok)
+            {
+                site.CloudflarePagesProject = result.ProjectName ?? project;
+                site.ProductionUrl = result.ProductionUrl;
+                LastDeployUrl = result.ProductionUrl;
+                _lastDeployProjectSeed = site.CloudflarePagesProject ?? project;
+                CloudflareProjectName = _lastDeployProjectSeed;
+                _svc.Notifications.Notify("Published", result.Message);
+            }
+            else
+            {
+                _svc.Notifications.Notify("Publish failed", result.Message);
+                ShowAdviceFrom(result.Message);
+            }
+
+            PersistSites();
+            Deployments.Clear();
+            foreach (var d in site.Deployments.OrderByDescending(x => x.At))
+                Deployments.Add(d);
+        }
+        catch (Exception ex)
+        {
+            DeployStatus = "Publish failed: " + ex.Message;
+            AppendLog(DeployStatus);
+            _svc.Notifications.Notify("Publish failed", ex.Message);
+        }
+        finally
+        {
+            DeployIsBusy = false;
+            RefreshDeployPanel();
+        }
+    }
+
+    [RelayCommand]
+    private void OpenLastDeployUrl()
+    {
+        var url = LastDeployUrl ?? SelectedSite?.ProductionUrl;
+        if (string.IsNullOrWhiteSpace(url)) return;
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = url,
+                UseShellExecute = true,
+            });
+        }
+        catch (Exception ex)
+        {
+            DeployStatus = ex.Message;
+        }
+    }
+
+    [RelayCommand]
+    private async Task DeployPrerequisiteCheckAsync()
+    {
+        ClearLog();
+        if (SelectedSite is null)
+        {
+            AppendLog("Pick a site from the list, or create a new one.");
+            return;
+        }
+
+        AppendLog("Site path: " + SelectedSite.Path);
+        var php = _svc.Runtime.FindPhp();
+        AppendLog(php is null ? "PHP: not found" : "PHP: " + php);
+        var npm = _svc.Runtime.FindNpm();
+        AppendLog(npm is null ? "npm: not found (needed for front-end build + Wrangler)" : "npm: " + npm);
+        var npx = WhichNpx();
+        AppendLog(npx is null
+            ? "npx: not found — install Node.js to publish to Cloudflare Pages"
+            : "npx: " + npx);
+
+        if (CloudflareHosts.Count == 0)
+        {
+            AppendLog("Cloudflare Pages: not connected. Hosts → Connect a New Host → Cloudflare Pages.");
+            AppendLog("You need an API token (Pages Edit) and your Account ID.");
+        }
+        else
+        {
+            foreach (var h in CloudflareHosts)
+                AppendLog($"Cloudflare host: {h.Label} (account {(string.IsNullOrWhiteSpace(h.Extra) ? "missing ID" : h.Extra)})");
+        }
+
+        var staticDir = _svc.StaticPublish.ResolveStaticOutputDir(SelectedSite.Path);
+        var ready = _svc.StaticPublish.StaticOutputLooksReady(SelectedSite.Path);
+        AppendLog(ready
+            ? "Existing static output: " + staticDir
+            : "No static output yet — publish will run ssg:generate first.");
+
+        AppendLog("");
+        AppendLog("Static publish = HTML files on Cloudflare. Control panel stays on this PC.");
+        AppendLog("Full live Statamic (log in from anywhere) needs Forge / Laravel Cloud — not built yet.");
+        DeployStatus = "Prerequisites checked — see Activity / log above.";
+        StatusLine = DeployStatus;
         await Task.CompletedTask;
+    }
+
+    private static string? WhichNpx()
+    {
+        try
+        {
+            var path = Environment.GetEnvironmentVariable("PATH") ?? "";
+            foreach (var dir in path.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
+            {
+                foreach (var name in new[] { "npx.cmd", "npx.exe", "npx" })
+                {
+                    var c = Path.Combine(dir.Trim('"'), name);
+                    if (File.Exists(c)) return c;
+                }
+            }
+        }
+        catch
+        {
+            // ignore
+        }
+
+        return null;
     }
 
     private static async Task<string?> PickFolderAsync(string title)

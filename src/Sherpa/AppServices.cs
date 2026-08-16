@@ -25,6 +25,7 @@ public sealed class AppServices
     public ForgeClient Forge { get; } = new();
     public NetlifyClient Netlify { get; } = new();
     public LaravelCloudClient LaravelCloud { get; } = new();
+    public StaticPublishService StaticPublish { get; }
 
     public AppServices()
     {
@@ -34,5 +35,6 @@ public sealed class AppServices
         Git = new GitService(Processes, Runtime);
         Commands = new SiteCommandsService(Processes, Runtime);
         Install = new InstallCoordinator(Processes, Runtime, Herd, Git, Commands);
+        StaticPublish = new StaticPublishService(Processes, Runtime, Cloudflare, Secrets);
     }
 }
