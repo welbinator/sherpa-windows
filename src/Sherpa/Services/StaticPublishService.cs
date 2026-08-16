@@ -133,18 +133,31 @@ public sealed class StaticPublishService
         if (!projOk || project is null)
             return Fail(projMsg);
 
-        // 2) Generate static files if needed
+        // Public URL for this deploy — MUST be used when generating so CSS/JS don't
+        // point at the local Herd *.test host (Chrome then prompts “access other apps…”).
+        var publicBaseUrl = (project.ProductionUrl ?? $"https://{project.Name}.pages.dev").TrimEnd('/');
+
+        // 2) Generate static files if needed — or if existing HTML still references local *.test
         var staticDir = ResolveStaticOutputDir(site.Path) ?? DefaultStaticOutput(site.Path);
-        var needBuild = regenerate || !Directory.Exists(staticDir)
-                        || !Directory.EnumerateFileSystemEntries(staticDir).Any();
+        var localOrigins = CollectLocalOrigins(site);
+        var existingHasLocalUrls = Directory.Exists(staticDir)
+                                   && StaticHtmlReferencesLocalOrigins(staticDir, localOrigins);
+
+        var needBuild = regenerate
+                        || !Directory.Exists(staticDir)
+                        || !Directory.EnumerateFileSystemEntries(staticDir).Any()
+                        || existingHasLocalUrls;
 
         if (needBuild)
         {
-            onLine?.Invoke(regenerate
-                ? "Regenerating static site…"
-                : "Static output missing — generating…");
+            if (existingHasLocalUrls && !regenerate)
+                onLine?.Invoke("Static HTML still points at your local .test site — regenerating for the public URL…");
+            else
+                onLine?.Invoke(regenerate
+                    ? "Regenerating static site…"
+                    : "Static output missing — generating…");
 
-            var gen = await GenerateStaticAsync(site.Path, php, onLine, ct).ConfigureAwait(false);
+            var gen = await GenerateStaticAsync(site.Path, php, publicBaseUrl, onLine, ct).ConfigureAwait(false);
             if (!gen.ok)
                 return Fail(gen.message);
 
@@ -158,7 +171,17 @@ public sealed class StaticPublishService
         if (!Directory.Exists(staticDir) || !Directory.EnumerateFileSystemEntries(staticDir).Any())
             return Fail("Static output folder is empty or missing: " + staticDir);
 
+        // Ensure Vite build assets are inside the static folder (SSG usually copies them).
+        EnsurePublicBuildCopied(site.Path, staticDir, onLine);
+
+        // Safety net: rewrite any leftover local absolute URLs → root-relative
+        // so browsers never try to load CSS from https://something.test
+        var rewritten = RewriteLocalAbsoluteUrls(staticDir, localOrigins, publicBase: null);
+        if (rewritten > 0)
+            onLine?.Invoke($"Rewrote local URLs in {rewritten} file(s) so assets load from the public site.");
+
         onLine?.Invoke("Static output: " + staticDir);
+        onLine?.Invoke("Public URL base: " + publicBaseUrl);
 
         // 3) Optional wrangler.toml for Git-based deploys later
         try
@@ -220,7 +243,11 @@ public sealed class StaticPublishService
     }
 
     private async Task<(bool ok, string message)> GenerateStaticAsync(
-        string sitePath, string php, Action<string>? onLine, CancellationToken ct)
+        string sitePath,
+        string php,
+        string publicBaseUrl,
+        Action<string>? onLine,
+        CancellationToken ct)
     {
         // Frontend assets first when package.json exists (Vite / Mix)
         var packageJson = Path.Combine(sitePath, "package.json");
@@ -282,10 +309,21 @@ public sealed class StaticPublishService
                 onLine?.Invoke("SSG install had issues — will still try ssg:generate.");
         }
 
-        onLine?.Invoke("php please ssg:generate…");
+        // Critical: generate with the PUBLIC base URL so @vite / asset() don't bake in
+        // https://site.test (local Herd). Process env only — does not edit .env on disk.
+        var appUrl = string.IsNullOrWhiteSpace(publicBaseUrl)
+            ? "http://localhost"
+            : publicBaseUrl.TrimEnd('/');
+        onLine?.Invoke("php please ssg:generate (APP_URL=" + appUrl + ")…");
+        var genEnv = new Dictionary<string, string?>
+        {
+            ["APP_URL"] = appUrl,
+            // Same origin for compiled assets; root-relative rewrite still runs after.
+            ["ASSET_URL"] = appUrl,
+        };
         var gen = await _runner.RunAsync(php,
             new[] { "please", "ssg:generate" },
-            sitePath, null, onLine, ct).ConfigureAwait(false);
+            sitePath, genEnv, onLine, ct).ConfigureAwait(false);
 
         if (!gen.Success)
         {
@@ -299,6 +337,211 @@ public sealed class StaticPublishService
             return (false, "ssg:generate finished but static output is empty. Expected something under storage/app/static.");
 
         return (true, "Static site generated.");
+    }
+
+    /// <summary>
+    /// Local origins that must never appear in a public static deploy (Herd *.test, APP_URL, site URL).
+    /// </summary>
+    internal static List<string> CollectLocalOrigins(Site site)
+    {
+        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        void Add(string? raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw)) return;
+            raw = raw.Trim().TrimEnd('/');
+            if (raw.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+                || raw.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            {
+                set.Add(raw);
+                // also the other scheme
+                if (raw.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+                    set.Add("http://" + raw["https://".Length..]);
+                else
+                    set.Add("https://" + raw["http://".Length..]);
+            }
+        }
+
+        Add(site.Url);
+        try
+        {
+            var envPath = Path.Combine(site.Path, ".env");
+            if (File.Exists(envPath))
+            {
+                foreach (var line in File.ReadLines(envPath))
+                {
+                    var t = line.Trim();
+                    if (t.StartsWith("APP_URL=", StringComparison.OrdinalIgnoreCase)
+                        || t.StartsWith("ASSET_URL=", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var v = t[(t.IndexOf('=') + 1)..].Trim().Trim('"').Trim('\'');
+                        Add(v);
+                    }
+                }
+            }
+        }
+        catch
+        {
+            // ignore
+        }
+
+        // Herd convention from site folder / name
+        var slug = slugify(site.Name);
+        if (!string.IsNullOrWhiteSpace(slug))
+        {
+            Add($"http://{slug}.test");
+            Add($"https://{slug}.test");
+        }
+
+        try
+        {
+            var folder = Path.GetFileName(site.Path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+            if (!string.IsNullOrWhiteSpace(folder))
+            {
+                Add($"http://{folder}.test");
+                Add($"https://{folder}.test");
+            }
+        }
+        catch
+        {
+            // ignore
+        }
+
+        return set.ToList();
+
+        static string slugify(string? name)
+        {
+            if (string.IsNullOrWhiteSpace(name)) return "";
+            var s = name.Trim().ToLowerInvariant();
+            s = Regex.Replace(s, @"[^a-z0-9-]+", "-");
+            return Regex.Replace(s, @"-+", "-").Trim('-');
+        }
+    }
+
+    internal static bool StaticHtmlReferencesLocalOrigins(string staticDir, IReadOnlyList<string> localOrigins)
+    {
+        if (localOrigins.Count == 0 || !Directory.Exists(staticDir)) return false;
+        try
+        {
+            foreach (var file in Directory.EnumerateFiles(staticDir, "*.html", SearchOption.AllDirectories))
+            {
+                // Only need a quick peek
+                string text;
+                try { text = File.ReadAllText(file); }
+                catch { continue; }
+
+                foreach (var origin in localOrigins)
+                {
+                    if (text.Contains(origin, StringComparison.OrdinalIgnoreCase))
+                        return true;
+                }
+
+                // Catch any *.test host even if not in our list
+                if (Regex.IsMatch(text, @"https?://[a-z0-9.-]+\.test\b", RegexOptions.IgnoreCase))
+                    return true;
+            }
+        }
+        catch
+        {
+            // ignore
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Replace absolute local origins with root-relative paths (empty publicBase)
+    /// or with the public base URL. Returns number of files changed.
+    /// </summary>
+    internal static int RewriteLocalAbsoluteUrls(
+        string staticDir,
+        IReadOnlyList<string> localOrigins,
+        string? publicBase)
+    {
+        if (!Directory.Exists(staticDir)) return 0;
+
+        var origins = new List<string>(localOrigins);
+        // Always strip any http(s)://*.test that slipped through
+        // (handled per-file via regex below as well)
+
+        var replacement = string.IsNullOrWhiteSpace(publicBase) ? "" : publicBase.TrimEnd('/');
+        var exts = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ".html", ".htm", ".css", ".js", ".json", ".xml", ".txt", ".svg", ".webmanifest",
+        };
+
+        var changed = 0;
+        foreach (var file in Directory.EnumerateFiles(staticDir, "*", SearchOption.AllDirectories))
+        {
+            if (!exts.Contains(Path.GetExtension(file))) continue;
+
+            string text;
+            try { text = File.ReadAllText(file); }
+            catch { continue; }
+
+            var original = text;
+            foreach (var origin in origins.OrderByDescending(o => o.Length))
+            {
+                if (string.IsNullOrWhiteSpace(origin)) continue;
+                text = text.Replace(origin, replacement, StringComparison.OrdinalIgnoreCase);
+            }
+
+            // Any remaining https://something.test → root-relative
+            text = Regex.Replace(
+                text,
+                @"https?://[a-z0-9.-]+\.test(?=[:/""'\s]|$)",
+                replacement,
+                RegexOptions.IgnoreCase);
+
+            if (!string.Equals(original, text, StringComparison.Ordinal))
+            {
+                try
+                {
+                    File.WriteAllText(file, text);
+                    changed++;
+                }
+                catch
+                {
+                    // ignore locked files
+                }
+            }
+        }
+
+        return changed;
+    }
+
+    private static void EnsurePublicBuildCopied(string sitePath, string staticDir, Action<string>? onLine)
+    {
+        try
+        {
+            var publicBuild = Path.Combine(sitePath, "public", "build");
+            var destBuild = Path.Combine(staticDir, "build");
+            if (!Directory.Exists(publicBuild)) return;
+
+            // Copy if missing or empty
+            var destEmpty = !Directory.Exists(destBuild)
+                            || !Directory.EnumerateFileSystemEntries(destBuild, "*", SearchOption.AllDirectories).Any();
+            if (!destEmpty) return;
+
+            onLine?.Invoke("Copying public/build into static output…");
+            CopyDirectory(publicBuild, destBuild);
+        }
+        catch (Exception ex)
+        {
+            onLine?.Invoke("Could not copy public/build (non-fatal): " + ex.Message);
+        }
+    }
+
+    private static void CopyDirectory(string source, string dest)
+    {
+        Directory.CreateDirectory(dest);
+        foreach (var file in Directory.EnumerateFiles(source, "*", SearchOption.AllDirectories))
+        {
+            var rel = Path.GetRelativePath(source, file);
+            var target = Path.Combine(dest, rel);
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            File.Copy(file, target, overwrite: true);
+        }
     }
 
     private static bool LooksLikeSsgInstalled(string sitePath)
