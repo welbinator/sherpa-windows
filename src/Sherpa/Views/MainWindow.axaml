@@ -365,7 +365,7 @@
 
     <Border Grid.Row="1" Background="#0F1218" BorderBrush="#1E2430" BorderThickness="0,1,0,0" Padding="12,8">
       <TextBlock Foreground="#9AA3B2" FontSize="12"
-                 Text="Sherpa for Windows · 0.2.0 (build 2) · Tokens stay in the Windows secret store" />
+                 Text="Sherpa for Windows · 0.2.1 (build 3) · Tokens stay in the Windows secret store" />
     </Border>
 
     <!-- Toast -->
@@ -385,14 +385,10 @@
         <ScrollViewer>
           <StackPanel Spacing="12">
             <TextBlock Text="New Site" FontSize="22" FontWeight="SemiBold" />
-            <TextBlock Foreground="#9AA3B2" TextWrapping="Wrap" Text="Start blank or pick a Marketplace starter kit." />
+            <TextBlock Foreground="#9AA3B2" TextWrapping="Wrap"
+                       Text="Sherpa sets up Statamic and handles Composer for you. Fill in the name and folder, then create." />
 
-            <TextBlock Text="Starting point" FontWeight="SemiBold" Margin="0,4,0,0" />
-            <RadioButton Content="Blank site" GroupName="Start" IsChecked="{Binding StartBlank}" />
-            <RadioButton Content="Fresh Statamic, no starter kit" GroupName="Start" IsChecked="{Binding StartFreshStatamic}" />
-            <TextBlock Foreground="#9AA3B2" FontSize="12" Text="Marketplace starter kits: next build (API + license panel)." />
-
-            <TextBlock Text="Site name" FontWeight="SemiBold" Margin="0,8,0,0" />
+            <TextBlock Text="Site name" FontWeight="SemiBold" Margin="0,4,0,0" />
             <TextBox Text="{Binding NewSiteName}" Watermark="my-site" />
 
             <TextBlock Text="Folder" FontWeight="SemiBold" />

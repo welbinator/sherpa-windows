@@ -101,7 +101,7 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty] private bool createUserSuper = true;
     [ObservableProperty] private string customCommand = "";
     [ObservableProperty] private string emptyTitle = "Create your first site";
-    [ObservableProperty] private string emptyBody = "Start blank or pick a Marketplace starter kit.";
+    [ObservableProperty] private string emptyBody = "Create a new Statamic site, or import a folder you already have.";
 
     partial void OnSelectedNavIndexChanged(int value)
     {
@@ -150,8 +150,6 @@ public partial class MainViewModel : ViewModelBase
             : p.DefaultSitesFolder;
         NewSiteParkInHerd = p.PreferHerdForNewSites;
         NewSiteSecureHttps = p.SecureNewHerdSitesWithHttps;
-        StartBlank = true;
-        StartFreshStatamic = false;
         RefreshNewSitePreviews();
     }
 
@@ -378,16 +376,13 @@ public partial class MainViewModel : ViewModelBase
     private async Task CreateSiteAsync()
     {
         var folder = string.IsNullOrWhiteSpace(NewSiteFolder) ? DefaultSitesFolder : NewSiteFolder;
-        var point = StartFreshStatamic
-            ? InstallCoordinator.StartingPoint.FreshStatamic
-            : InstallCoordinator.StartingPoint.Blank;
-
+        // Always install Statamic — same happy path as Mac "create a site"
         await RunJobAsync("New Site", async ct =>
         {
             var (site, result, error) = await _svc.Install.CreateAsync(
                 folder,
                 NewSiteName.Trim(),
-                point,
+                InstallCoordinator.StartingPoint.FreshStatamic,
                 NewSiteParkInHerd,
                 NewSiteSecureHttps,
                 AppendLog,
