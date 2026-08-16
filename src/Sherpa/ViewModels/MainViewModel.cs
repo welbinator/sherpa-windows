@@ -65,7 +65,7 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty] private string sitePreviewTitle = "Site preview";
     [ObservableProperty] private string sitePreviewSubtitle = "Create or select a site to see a preview.";
     [ObservableProperty] private string sitePreviewBadge = "";
-    [ObservableProperty] private string statusLine = "Sherpa for Windows · 0.2.0";
+    [ObservableProperty] private string statusLine = "Sherpa for Windows · 0.2.5";
     [ObservableProperty] private string runtimeStatus = "";
     [ObservableProperty] private string gitBranchLine = "";
     [ObservableProperty] private string gitLogText = "";
@@ -347,11 +347,36 @@ public partial class MainViewModel : ViewModelBase
 
     private void ReloadSites()
     {
+        var previousId = SelectedSite?.Id;
         Sites.Clear();
         foreach (var s in _svc.Sites.Load().OrderBy(s => s.Name))
             Sites.Add(s);
-        if (SelectedSite is not null)
-            SelectedSite = Sites.FirstOrDefault(s => s.Id == SelectedSite.Id);
+
+        // Prefer the previously selected site when it still exists.
+        if (previousId is not null)
+            SelectedSite = Sites.FirstOrDefault(s => s.Id == previousId);
+
+        // On launch (and anytime selection is empty), open the sites overview —
+        // never leave the "Create your first site" card up when sites exist.
+        if (SelectedSite is null && Sites.Count > 0)
+            SelectedSite = Sites[0];
+
+        RefreshEmptyStateCopy();
+    }
+
+    private void RefreshEmptyStateCopy()
+    {
+        if (Sites.Count == 0)
+        {
+            EmptyTitle = "Create your first site";
+            EmptyBody = "Create a new Statamic site, or import a folder you already have.";
+        }
+        else
+        {
+            // Should rarely show — selection is auto-restored when sites exist.
+            EmptyTitle = "Select a site";
+            EmptyBody = "Pick a site from the sidebar, or create a new one.";
+        }
     }
 
     private void ReloadHosts()
@@ -421,69 +446,82 @@ public partial class MainViewModel : ViewModelBase
 
     /// <summary>
     /// Step-based progress. Major coordinator messages open a phase band;
-    /// composer/process noise only crawls inside that band (never jumps to 90% on "github").
+    /// composer/process noise only crawls inside that band.
+    /// IMPORTANT: never match bare path fragments like "Herd" — PHP/Composer live under
+    /// …\Programs\Herd\… so contains("herd") was jumping the bar to ~95% on the first packages.
     /// </summary>
     private void AdvanceInstallProgress(string line)
     {
         var lower = line.Trim().ToLowerInvariant();
 
-        // High-level steps from InstallCoordinator (and clear Herd messages)
-        if (lower.StartsWith("creating statamic") || lower.Contains("create-project"))
+        // High-level steps from InstallCoordinator only (prefix checks — not path substrings)
+        if (lower.StartsWith("creating statamic"))
         {
-            EnterInstallPhase(8, 58);
+            // create-project is the long pole — most of the bar lives here
+            EnterInstallPhase(5, 72);
             return;
         }
         if (lower.StartsWith("installing starter kit"))
         {
-            EnterInstallPhase(58, 70);
+            EnterInstallPhase(72, 80);
             return;
         }
         if (lower.StartsWith("blank site"))
         {
-            SnapInstallProgress(60);
-            EnterInstallPhase(60, 68);
+            EnterInstallPhase(72, 78);
             return;
         }
         if (lower.StartsWith("configuring sqlite")
             || lower.StartsWith("configuring mysql")
             || lower.StartsWith("content storage"))
         {
-            EnterInstallPhase(68, 76);
+            EnterInstallPhase(78, 84);
             return;
         }
         if (lower.StartsWith("running install:eloquent"))
         {
-            SnapInstallProgress(Math.Max(InstallProgress, 72));
+            EnterInstallPhase(80, 84);
             return;
         }
         if (lower.StartsWith("installing static site")
-            || lower.StartsWith("please install:ssg")
-            || lower.Contains("composer require statamic/ssg"))
+            || lower.StartsWith("please install:ssg"))
         {
-            EnterInstallPhase(76, 83);
+            EnterInstallPhase(84, 88);
             return;
         }
         if (lower.StartsWith("creating super user"))
         {
-            EnterInstallPhase(83, 89);
+            EnterInstallPhase(88, 91);
             return;
         }
         if (lower.StartsWith("initialize git"))
         {
-            EnterInstallPhase(89, 93);
+            EnterInstallPhase(91, 94);
             return;
         }
-        // Herd — avoid bare "secure"/"park"/"git" which match composer noise / github URLs
-        if (lower.Contains("herd")
-            || lower.StartsWith("linked ")
-            || lower.StartsWith("parked ")
-            || lower.StartsWith("securing ")
-            || lower.Contains("ssl certificate"))
+        // Herd status lines we emit ourselves — NOT filesystem paths containing \Herd\
+        if (lower.StartsWith("park in herd")
+            || lower.StartsWith("parked in herd")
+            || lower.StartsWith("parked path ")
+            || lower.StartsWith("link failed")
+            || lower.StartsWith("secure with https")
+            || lower.StartsWith("https enabled via herd")
+            || lower.StartsWith("https removed")
+            || lower.StartsWith("starting herd")
+            || lower.StartsWith("herd is running")
+            || lower.StartsWith("herd started")
+            || lower.StartsWith("herd launch")
+            || lower.StartsWith("could not park in herd")
+            || lower.StartsWith("could not start herd")
+            || lower.StartsWith("herd was not found")
+            || lower.StartsWith("herd cli was not found")
+            || lower.StartsWith("timed out waiting for herd")
+            || lower.StartsWith("removing https"))
         {
-            EnterInstallPhase(93, 99);
+            EnterInstallPhase(94, 99);
             return;
         }
-        if (lower.StartsWith("created project") || lower.Contains("site ready"))
+        if (lower.StartsWith("created project") || lower.StartsWith("site ready"))
         {
             SnapInstallProgress(100);
             _installPhaseFloor = 100;
@@ -491,13 +529,15 @@ public partial class MainViewModel : ViewModelBase
             return;
         }
 
-        // Within the open phase: asymptotic crawl so long composer runs fill the bar honestly
+        // Ignore generic composer chatter for phase changes (create-project, github URLs, package paths).
+        // Only crawl inside the current band so the bar fills with real work output.
         if (_installPhaseCeil > _installPhaseFloor + 0.5 && InstallProgress < _installPhaseCeil - 0.4)
         {
             _installPhaseNoise++;
             var span = _installPhaseCeil - _installPhaseFloor;
-            // ~half the band by ~35 lines, ~90% by ~120 lines — create-project is chatty
-            var t = 1.0 - Math.Exp(-_installPhaseNoise / 45.0);
+            // create-project emits hundreds of lines — crawl slowly so it doesn't look "done"
+            // ~half the band by ~80 lines, ~90% by ~220 lines
+            var t = 1.0 - Math.Exp(-_installPhaseNoise / 100.0);
             var target = _installPhaseFloor + span * t;
             if (target > InstallProgress)
             {
@@ -509,14 +549,20 @@ public partial class MainViewModel : ViewModelBase
 
     private void EnterInstallPhase(double floor, double ceil)
     {
+        // Only move forward into a later phase — never snap backward to an earlier band
+        // if a stray line re-matches, and never jump the floor ahead of real progress by a lot
+        // when we're already past this phase.
+        if (InstallProgress >= ceil)
+            return;
+
+        var enteringNew = floor > _installPhaseFloor + 0.1 || ceil > _installPhaseCeil + 0.1;
         _installPhaseFloor = floor;
         _installPhaseCeil = ceil;
-        _installPhaseNoise = 0;
+        if (enteringNew)
+            _installPhaseNoise = 0;
+
         if (InstallProgress < floor)
             InstallProgress = floor;
-        // Don't jump backward if a late message re-enters an earlier-ish band
-        if (InstallProgress > ceil - 0.5)
-            InstallProgress = Math.Max(floor, ceil - 1);
         InstallProgressIndeterminate = false;
     }
 
@@ -873,9 +919,9 @@ public partial class MainViewModel : ViewModelBase
                 {
                     IsInstallingSite = true;
                     InstallProgressIndeterminate = false;
-                    InstallProgress = 4;
-                    _installPhaseFloor = 4;
-                    _installPhaseCeil = 58;
+                    InstallProgress = 2;
+                    _installPhaseFloor = 2;
+                    _installPhaseCeil = 72;
                     _installPhaseNoise = 0;
                     InstallStatus = "Starting install…";
                     // Keep header/footer quiet; don't echo install into StatusLine
@@ -980,7 +1026,9 @@ public partial class MainViewModel : ViewModelBase
         var site = SelectedSite;
         var path = site.Path;
         Sites.Remove(site);
-        SelectedSite = null;
+        // Stay on overview of another site when one remains — don't bounce to empty card
+        SelectedSite = Sites.FirstOrDefault();
+        RefreshEmptyStateCopy();
         PersistSites();
         if (DeleteSiteFilesToo)
         {
@@ -1000,7 +1048,6 @@ public partial class MainViewModel : ViewModelBase
         }
         else
         {
-            StatusLine = "Remove keeps the folder on disk. Delete site files moves the project folder to the Trash.";
             StatusLine = $"Removed {site.Name} from Sherpa. Files on disk were left alone.";
         }
         ShowDeleteConfirm = false;
