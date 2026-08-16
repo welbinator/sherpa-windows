@@ -137,36 +137,17 @@ public sealed class StaticPublishService
         // point at the local Herd *.test host (Chrome then prompts “access other apps…”).
         var publicBaseUrl = (project.ProductionUrl ?? $"https://{project.Name}.pages.dev").TrimEnd('/');
 
-        // 2) Generate static files if needed — or if existing HTML still references local *.test
+        // Always rebuild for Cloudflare publish. Reusing a prior SSG that baked
+        // https://site.test into @vite tags is the #1 cause of “works on my PC only”.
         var staticDir = ResolveStaticOutputDir(site.Path) ?? DefaultStaticOutput(site.Path);
         var localOrigins = CollectLocalOrigins(site);
-        var existingHasLocalUrls = Directory.Exists(staticDir)
-                                   && StaticHtmlReferencesLocalOrigins(staticDir, localOrigins);
 
-        var needBuild = regenerate
-                        || !Directory.Exists(staticDir)
-                        || !Directory.EnumerateFileSystemEntries(staticDir).Any()
-                        || existingHasLocalUrls;
+        onLine?.Invoke("Generating static site for public URL (always rebuild on publish)…");
+        var gen = await GenerateStaticAsync(site.Path, php, publicBaseUrl, onLine, ct).ConfigureAwait(false);
+        if (!gen.ok)
+            return Fail(gen.message);
 
-        if (needBuild)
-        {
-            if (existingHasLocalUrls && !regenerate)
-                onLine?.Invoke("Static HTML still points at your local .test site — regenerating for the public URL…");
-            else
-                onLine?.Invoke(regenerate
-                    ? "Regenerating static site…"
-                    : "Static output missing — generating…");
-
-            var gen = await GenerateStaticAsync(site.Path, php, publicBaseUrl, onLine, ct).ConfigureAwait(false);
-            if (!gen.ok)
-                return Fail(gen.message);
-
-            staticDir = ResolveStaticOutputDir(site.Path) ?? staticDir;
-        }
-        else
-        {
-            onLine?.Invoke("Using existing static output (toggle “Regenerate” to rebuild).");
-        }
+        staticDir = ResolveStaticOutputDir(site.Path) ?? staticDir;
 
         if (!Directory.Exists(staticDir) || !Directory.EnumerateFileSystemEntries(staticDir).Any())
             return Fail("Static output folder is empty or missing: " + staticDir);
@@ -177,11 +158,32 @@ public sealed class StaticPublishService
         // Safety net: rewrite any leftover local absolute URLs → root-relative
         // so browsers never try to load CSS from https://something.test
         var rewritten = RewriteLocalAbsoluteUrls(staticDir, localOrigins, publicBase: null);
-        if (rewritten > 0)
-            onLine?.Invoke($"Rewrote local URLs in {rewritten} file(s) so assets load from the public site.");
+        onLine?.Invoke(rewritten > 0
+            ? $"Rewrote local URLs in {rewritten} file(s) so assets load from the public site."
+            : "Checked static files for local .test URLs.");
+
+        // Hard gate — never upload HTML that still points at Herd/local.
+        var leftover = FindLocalUrlSamples(staticDir, max: 5);
+        if (leftover.Count > 0)
+        {
+            return Fail(
+                "Refusing to publish: static HTML still references your local site (" +
+                string.Join(", ", leftover) +
+                "). CSS would only work on this PC. Try Publish again; if it keeps happening, tell Hermes.");
+        }
+
+        // Confirm /build exists in what we upload
+        var buildDir = Path.Combine(staticDir, "build");
+        if (!Directory.Exists(buildDir)
+            || !Directory.EnumerateFiles(buildDir, "*.css", SearchOption.AllDirectories).Any())
+        {
+            onLine?.Invoke("Warning: no CSS under static/build — copying public/build again…");
+            EnsurePublicBuildCopied(site.Path, staticDir, onLine, force: true);
+        }
 
         onLine?.Invoke("Static output: " + staticDir);
         onLine?.Invoke("Public URL base: " + publicBaseUrl);
+        _ = regenerate; // UI toggle kept; publish always rebuilds for correctness
 
         // 3) Optional wrangler.toml for Git-based deploys later
         try
@@ -314,15 +316,38 @@ public sealed class StaticPublishService
         var appUrl = string.IsNullOrWhiteSpace(publicBaseUrl)
             ? "http://localhost"
             : publicBaseUrl.TrimEnd('/');
+
+        // Drop config cache so a stale APP_URL isn't baked in.
+        onLine?.Invoke("php artisan config:clear…");
+        await _runner.RunAsync(php, new[] { "artisan", "config:clear" }, sitePath, null, onLine, ct)
+            .ConfigureAwait(false);
+
+        // If public/hot exists, @vite points at the Vite dev server (localhost) — kill it.
+        try
+        {
+            var hot = Path.Combine(sitePath, "public", "hot");
+            if (File.Exists(hot))
+            {
+                File.Delete(hot);
+                onLine?.Invoke("Removed public/hot (Vite dev server file) so assets use built files.");
+            }
+        }
+        catch (Exception ex)
+        {
+            onLine?.Invoke("Could not remove public/hot: " + ex.Message);
+        }
+
         onLine?.Invoke("php please ssg:generate (APP_URL=" + appUrl + ")…");
         var genEnv = new Dictionary<string, string?>
         {
             ["APP_URL"] = appUrl,
             // Same origin for compiled assets; root-relative rewrite still runs after.
             ["ASSET_URL"] = appUrl,
+            // Prevent Vite dev server / hot file from leaking into the static build.
+            ["VITE_DEV_SERVER_URL"] = null,
         };
         var gen = await _runner.RunAsync(php,
-            new[] { "please", "ssg:generate" },
+            new[] { "please", "ssg:generate", "--no-interaction" },
             sitePath, genEnv, onLine, ct).ConfigureAwait(false);
 
         if (!gen.Success)
@@ -489,7 +514,14 @@ public sealed class StaticPublishService
             // Any remaining https://something.test → root-relative
             text = Regex.Replace(
                 text,
-                @"https?://[a-z0-9.-]+\.test(?=[:/""'\s]|$)",
+                @"https?://[a-z0-9.-]+\.test(?=[:/""'\s?]|$)",
+                replacement,
+                RegexOptions.IgnoreCase);
+
+            // Also strip accidental Vite dev-server hosts
+            text = Regex.Replace(
+                text,
+                @"https?://(?:localhost|127\.0\.0\.1)(?::\d+)?(?=[:/""'\s?]|$)",
                 replacement,
                 RegexOptions.IgnoreCase);
 
@@ -510,7 +542,7 @@ public sealed class StaticPublishService
         return changed;
     }
 
-    private static void EnsurePublicBuildCopied(string sitePath, string staticDir, Action<string>? onLine)
+    private static void EnsurePublicBuildCopied(string sitePath, string staticDir, Action<string>? onLine, bool force = false)
     {
         try
         {
@@ -518,18 +550,51 @@ public sealed class StaticPublishService
             var destBuild = Path.Combine(staticDir, "build");
             if (!Directory.Exists(publicBuild)) return;
 
-            // Copy if missing or empty
+            // Copy if missing/empty, or forced refresh
             var destEmpty = !Directory.Exists(destBuild)
                             || !Directory.EnumerateFileSystemEntries(destBuild, "*", SearchOption.AllDirectories).Any();
-            if (!destEmpty) return;
+            if (!force && !destEmpty) return;
 
-            onLine?.Invoke("Copying public/build into static output…");
+            onLine?.Invoke(force
+                ? "Copying public/build into static output (force)…"
+                : "Copying public/build into static output…");
             CopyDirectory(publicBuild, destBuild);
         }
         catch (Exception ex)
         {
             onLine?.Invoke("Could not copy public/build (non-fatal): " + ex.Message);
         }
+    }
+
+    /// <summary>Return sample leftover local absolute URLs still present in static HTML.</summary>
+    internal static List<string> FindLocalUrlSamples(string staticDir, int max = 5)
+    {
+        var found = new List<string>();
+        if (!Directory.Exists(staticDir)) return found;
+        try
+        {
+            foreach (var file in Directory.EnumerateFiles(staticDir, "*.html", SearchOption.AllDirectories))
+            {
+                string text;
+                try { text = File.ReadAllText(file); }
+                catch { continue; }
+
+                foreach (System.Text.RegularExpressions.Match m in
+                         Regex.Matches(text, @"https?://[a-z0-9.-]+\.test\b[^""'\s>]*", RegexOptions.IgnoreCase))
+                {
+                    var sample = m.Value;
+                    if (found.Any(f => f.Equals(sample, StringComparison.OrdinalIgnoreCase))) continue;
+                    found.Add(sample);
+                    if (found.Count >= max) return found;
+                }
+            }
+        }
+        catch
+        {
+            // ignore
+        }
+
+        return found;
     }
 
     private static void CopyDirectory(string source, string dest)
